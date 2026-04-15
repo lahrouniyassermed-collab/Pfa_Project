@@ -10,6 +10,7 @@ from app.api.routes.commandes import router as commandes_router
 from app.api.routes.reservations import router as reservations_router
 from app.api.routes.tombola import router as tombola_router
 from app.api.routes.tables_employes import router_tables, router_employes, router_dashboard
+from app.api.routes.ingredients_categories import router_ingredients, router_categories
 
 # Créer toutes les tables au démarrage
 Base.metadata.create_all(bind=engine)
@@ -42,6 +43,8 @@ app.include_router(tombola_router)
 app.include_router(router_tables)
 app.include_router(router_employes)
 app.include_router(router_dashboard)
+app.include_router(router_ingredients)
+app.include_router(router_categories)
 
 @app.get("/")
 def root():

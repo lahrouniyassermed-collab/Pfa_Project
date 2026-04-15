@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 from pydantic import BaseModel
 from datetime import datetime
@@ -81,10 +81,45 @@ def cloturer_commande(commande_id: int, db: Session = Depends(get_db), _=Depends
 # ── Cuisinier : voir et gérer les commandes ───────────────
 @router.get("/cuisine")
 def commandes_cuisine(db: Session = Depends(get_db), _=Depends(require_role("cuisinier", "gerant"))):
-    """Commandes envoyées en cuisine, par ordre d'arrivée"""
-    return db.query(Commande).filter(
+    """Commandes en attente cuisine — retourne les lignes avec noms des plats"""
+    commandes = db.query(Commande).options(
+        joinedload(Commande.lignes).joinedload(LigneCommande.plat),
+        joinedload(Commande.table)
+    ).filter(
         Commande.statut.in_([StatutCommandeEnum.envoyee, StatutCommandeEnum.en_preparation])
     ).order_by(Commande.date_heure).all()
+
+    return [{
+        "id": c.id,
+        "code_unique": c.code_unique,
+        "date_heure": c.date_heure.isoformat() if c.date_heure else None,
+        "statut": c.statut.value,
+        "table": {"id": c.table.id, "numero": c.table.numero} if c.table else None,
+        "lignes": [{
+            "id": l.id,
+            "quantite": l.quantite,
+            "note": l.note,
+            "statut": l.statut.value,
+            "plat_id": l.plat_id,
+            "plat_nom": l.plat.nom if l.plat else "Plat supprimé",
+        } for l in c.lignes]
+    } for c in commandes]
+
+@router.put("/{commande_id}/statut")
+def maj_statut_commande(
+    commande_id: int, statut: str,
+    db: Session = Depends(get_db), _=Depends(require_role("cuisinier", "gerant"))
+):
+    """Cuisinier marque une commande entière comme en_preparation ou prete"""
+    commande = db.query(Commande).filter(Commande.id == commande_id).first()
+    if not commande:
+        raise HTTPException(404, "Commande introuvable")
+    try:
+        commande.statut = StatutCommandeEnum(statut)
+    except ValueError:
+        raise HTTPException(400, f"Statut invalide : {statut}")
+    db.commit()
+    return {"message": f"Commande {commande.code_unique} → {statut}"}
 
 @router.put("/ligne/{ligne_id}/statut")
 def maj_statut_ligne(ligne_id: int, statut: str, db: Session = Depends(get_db), _=Depends(require_role("cuisinier", "gerant"))):

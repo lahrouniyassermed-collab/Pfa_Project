@@ -29,16 +29,14 @@ async def participer(
     screenshot: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
-    # Sauvegarder le screenshot
     ext = screenshot.filename.split(".")[-1]
     filename = f"{uuid.uuid4()}.{ext}"
     path = f"{UPLOAD_DIR}/{filename}"
     async with aiofiles.open(path, "wb") as f:
         await f.write(await screenshot.read())
 
-    # IA — vérification screenshot + analyse sentiment
     score_ia, valide_ia = await analyser_screenshot(path)
-    sentiment = await analyser_sentiment(f"{nom} {prenom}")  # sera remplacé par le texte de l'avis
+    sentiment = await analyser_sentiment(f"{nom} {prenom}")
 
     avis = Avis(
         nom=nom, prenom=prenom, email=email,
@@ -54,7 +52,22 @@ async def participer(
     db.refresh(avis)
     return {"message": "Participation enregistrée, en attente de validation", "id": avis.id}
 
-# ── Gérant : gérer la tombola ─────────────────────────────
+# ── Gérant : gérer les tombolas ───────────────────────────
+@router.get("/")
+def liste_tombolas(db: Session = Depends(get_db), _=Depends(require_role("gerant"))):
+    """Liste toutes les tombolas triées par date de début décroissante"""
+    tombolas = db.query(Tombola).order_by(Tombola.date_debut.desc()).all()
+    return [{
+        "id": t.id,
+        "titre": t.titre,
+        "lot": t.lot,
+        "date_debut": t.date_debut.isoformat() if t.date_debut else None,
+        "date_fin": t.date_fin.isoformat() if t.date_fin else None,
+        "active": t.active,
+        "nb_participations": len(t.participations),
+        "nb_valides": sum(1 for p in t.participations if p.statut == StatutAvisEnum.valide),
+    } for t in tombolas]
+
 @router.post("/creer")
 def creer_tombola(data: TombolaCreate, db: Session = Depends(get_db), _=Depends(require_role("gerant"))):
     from datetime import datetime
@@ -65,12 +78,30 @@ def creer_tombola(data: TombolaCreate, db: Session = Depends(get_db), _=Depends(
     )
     db.add(tombola)
     db.commit()
+    db.refresh(tombola)
     return tombola
 
 @router.get("/participations")
-def voir_participations(db: Session = Depends(get_db), _=Depends(require_role("gerant"))):
-    """Gérant voit toutes les participations avec le résultat IA"""
-    return db.query(Avis).order_by(Avis.date_depot.desc()).all()
+def voir_participations(tombola_id: Optional[int] = None, db: Session = Depends(get_db), _=Depends(require_role("gerant"))):
+    """Gérant voit les participations avec le résultat IA, filtrables par tombola"""
+    query = db.query(Avis)
+    if tombola_id:
+        query = query.filter(Avis.tombola_id == tombola_id)
+    avis = query.order_by(Avis.date_depot.desc()).all()
+    return [{
+        "id": a.id,
+        "nom": a.nom,
+        "prenom": a.prenom,
+        "email": a.email,
+        "code_commande": a.code_commande,
+        "screenshot": a.screenshot,
+        "statut": a.statut.value,
+        "date_depot": a.date_depot.isoformat() if a.date_depot else None,
+        "score_ia": a.score_ia,
+        "sentiment": a.sentiment.value if a.sentiment else None,
+        "validee_par_ia": a.validee_par_ia,
+        "tombola_id": a.tombola_id,
+    } for a in avis]
 
 @router.put("/avis/{avis_id}/valider")
 def valider_avis(avis_id: int, db: Session = Depends(get_db), _=Depends(require_role("gerant"))):
@@ -98,6 +129,10 @@ def tirage_au_sort(tombola_id: int, db: Session = Depends(get_db), _=Depends(req
         Avis.statut == StatutAvisEnum.valide
     ).all()
     if not gagnants:
-        raise HTTPException(400, "Aucune participation validée")
+        raise HTTPException(400, "Aucune participation validée pour cette tombola")
     gagnant = random.choice(gagnants)
-    return {"gagnant": f"{gagnant.prenom} {gagnant.nom}", "email": gagnant.email}
+    return {
+        "gagnant": f"{gagnant.prenom} {gagnant.nom}",
+        "email": gagnant.email,
+        "code_commande": gagnant.code_commande,
+    }
