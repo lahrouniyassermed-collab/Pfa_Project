@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useAuth } from '../hooks/useAuth'
 import { getTables, toutesCommandes } from '../services/api'
 
 const STATUT_CONFIG = {
@@ -13,7 +12,6 @@ export default function ServeurTables() {
   const [tables, setTables] = useState([])
   const [commandesActives, setCommandesActives] = useState({})
   const [loading, setLoading] = useState(true)
-  const { user, logout } = useAuth()
   const navigate = useNavigate()
 
   async function load() {
@@ -42,20 +40,6 @@ export default function ServeurTables() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-        <div>
-          <p className="text-base font-bold text-gray-900">MangerManger</p>
-          <p className="text-xs text-gray-400">Espace serveur</p>
-        </div>
-        <div className="flex items-center gap-4">
-          <span className="text-sm text-gray-600">{user?.prenom} {user?.nom}</span>
-          <button onClick={() => { logout(); navigate('/login') }} className="text-xs text-red-500 hover:text-red-700">
-            Déconnexion
-          </button>
-        </div>
-      </div>
-
       <div className="p-8">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold text-gray-900">Plan des tables</h1>

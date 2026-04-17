@@ -1,212 +1,207 @@
-import { useEffect, useState, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { useAuth } from '../hooks/useAuth'
-import { getCommandesCuisine, majStatutLigne, proposerPlat, mesPropositions } from '../services/api'
+import { useEffect, useState, useCallback } from 'react'
+import { getCommandesCuisine, majStatutCommande, majStatutLigne } from '../services/api'
 
-const STATUT_LIGNE = {
-  en_cours: { label: 'À préparer', bg: 'bg-amber-50 border-amber-200', btn: 'bg-amber-500 hover:bg-amber-600' },
-  en_preparation: { label: 'En préparation', bg: 'bg-blue-50 border-blue-200', btn: 'bg-blue-500 hover:bg-blue-600' },
-  prete: { label: 'Prête', bg: 'bg-green-50 border-green-200', btn: null },
+const STATUT_COMMANDE = {
+  envoyee:        { label: 'Nouvelle',        color: 'bg-blue-500',  text: 'text-blue-700',  bg: 'bg-blue-50 border-blue-200'  },
+  en_preparation: { label: 'En préparation',  color: 'bg-amber-500', text: 'text-amber-700', bg: 'bg-amber-50 border-amber-200' },
 }
 
-const STATUT_NEXT = { en_cours: 'en_preparation', en_preparation: 'prete' }
-const STATUT_NEXT_LABEL = { en_cours: 'Commencer', en_preparation: 'Marquer prête' }
+const STATUT_LIGNE = {
+  en_cours:       { label: 'En attente',      badge: 'bg-gray-100 text-gray-600'   },
+  en_preparation: { label: 'En préparation',  badge: 'bg-amber-100 text-amber-700' },
+  prete:          { label: 'Prêt',            badge: 'bg-green-100 text-green-700' },
+}
+
+function Timer({ dateHeure }) {
+  const [elapsed, setElapsed] = useState('')
+
+  useEffect(() => {
+    function calc() {
+      const diff = Math.floor((Date.now() - new Date(dateHeure).getTime()) / 1000)
+      if (diff < 60) return `${diff}s`
+      if (diff < 3600) return `${Math.floor(diff / 60)}min ${diff % 60}s`
+      return `${Math.floor(diff / 3600)}h ${Math.floor((diff % 3600) / 60)}min`
+    }
+    setElapsed(calc())
+    const id = setInterval(() => setElapsed(calc()), 1000)
+    return () => clearInterval(id)
+  }, [dateHeure])
+
+  const diff = Math.floor((Date.now() - new Date(dateHeure).getTime()) / 60000)
+  const color = diff >= 20 ? 'text-red-600' : diff >= 10 ? 'text-amber-600' : 'text-gray-500'
+
+  return <span className={`text-xs font-medium ${color}`}>⏱ {elapsed}</span>
+}
 
 export default function CuisinierInterface() {
   const [commandes, setCommandes] = useState([])
-  const [tab, setTab] = useState('cuisine') // cuisine | proposer | mes-props
   const [loading, setLoading] = useState(true)
-  const [form, setForm] = useState({ nom: '', description: '', prix: '' })
-  const [propositions, setPropositions] = useState([])
-  const [propSent, setPropSent] = useState(false)
-  const { user, logout } = useAuth()
-  const navigate = useNavigate()
-  const intervalRef = useRef(null)
+  const [toast, setToast] = useState(null)
 
-  async function loadCuisine() {
-    const res = await getCommandesCuisine()
-    setCommandes(res.data)
-    setLoading(false)
+  const notify = (msg, type = 'success') => {
+    setToast({ msg, type })
+    setTimeout(() => setToast(null), 2500)
   }
 
-  async function loadProps() {
-    const res = await mesPropositions()
-    setPropositions(res.data)
-  }
-
-  useEffect(() => {
-    loadCuisine()
-    intervalRef.current = setInterval(loadCuisine, 15000) // auto-refresh 15s
-    return () => clearInterval(intervalRef.current)
+  const load = useCallback(async () => {
+    try {
+      const r = await getCommandesCuisine()
+      setCommandes(r.data)
+    } catch { /* silent refresh */ }
+    finally { setLoading(false) }
   }, [])
 
+  // Chargement initial + polling toutes les 5s
   useEffect(() => {
-    if (tab === 'mes-props') loadProps()
-  }, [tab])
+    load()
+    const id = setInterval(load, 5000)
+    return () => clearInterval(id)
+  }, [load])
 
-  async function handleMajLigne(ligneId, statut) {
-    await majStatutLigne(ligneId, statut)
-    loadCuisine()
+  async function startCommande(id) {
+    try {
+      await majStatutCommande(id, 'en_preparation')
+      notify('Commande en préparation')
+      load()
+    } catch (e) { notify(e.response?.data?.detail || 'Erreur', 'error') }
   }
 
-  async function handleProposer(e) {
-    e.preventDefault()
-    await proposerPlat({ ...form, prix: parseFloat(form.prix) })
-    setPropSent(true)
-    setForm({ nom: '', description: '', prix: '' })
-    setTimeout(() => setPropSent(false), 3000)
+  async function markLigne(id, currentStatut) {
+    const next = currentStatut === 'en_cours' ? 'en_preparation' : 'prete'
+    try {
+      await majStatutLigne(id, next)
+      load()
+    } catch (e) { notify(e.response?.data?.detail || 'Erreur', 'error') }
   }
 
-  const STATUT_PROP_BADGE = {
-    en_attente: 'bg-amber-100 text-amber-700',
-    valide: 'bg-green-100 text-green-700',
-    refuse: 'bg-red-100 text-red-600',
-  }
+  if (loading) return (
+    <div className="flex items-center justify-center h-full">
+      <div className="w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full animate-spin" />
+    </div>
+  )
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+    <div className="p-6">
+      <div className="flex items-center justify-between mb-6">
         <div>
-          <p className="text-base font-bold text-gray-900">MangerManger</p>
-          <p className="text-xs text-gray-400">Interface cuisine</p>
+          <h2 className="text-2xl font-bold text-gray-900">Interface cuisine</h2>
+          <p className="text-sm text-gray-500 mt-0.5">Mise à jour automatique toutes les 5 secondes</p>
         </div>
-        <div className="flex items-center gap-4">
-          <span className="text-sm text-gray-600">{user?.prenom} {user?.nom}</span>
-          <button onClick={() => { logout(); navigate('/login') }} className="text-xs text-red-500 hover:text-red-700">Déconnexion</button>
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="bg-white border-b border-gray-200 px-6">
-        <div className="flex gap-0">
-          {[
-            { key: 'cuisine', label: 'Commandes' },
-            { key: 'proposer', label: 'Proposer un plat' },
-            { key: 'mes-props', label: 'Mes propositions' },
-          ].map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${tab === t.key ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-            >
-              {t.label}
-              {t.key === 'cuisine' && commandes.length > 0 && (
-                <span className="ml-2 bg-amber-500 text-white text-xs px-1.5 py-0.5 rounded-full">{commandes.length}</span>
-              )}
-            </button>
-          ))}
+        <div className="flex items-center gap-3">
+          <span className={`text-sm font-semibold px-3 py-1 rounded-full ${commandes.length > 0 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+            {commandes.length} commande{commandes.length > 1 ? 's' : ''} en attente
+          </span>
+          <button onClick={load} className="text-gray-400 hover:text-gray-600 transition-colors" title="Actualiser">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </button>
         </div>
       </div>
 
-      <div className="p-6">
-        {/* Commandes cuisine */}
-        {tab === 'cuisine' && (
-          loading ? (
-            <p className="text-gray-400 text-sm">Chargement…</p>
-          ) : commandes.length === 0 ? (
-            <div className="text-center py-16 text-gray-400">
-              <p className="text-4xl mb-3">✓</p>
-              <p className="font-medium">Aucune commande en attente</p>
-              <p className="text-sm mt-1">Actualisation automatique toutes les 15 secondes</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {commandes.map((cmd) => (
-                <div key={cmd.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-                  <div className="bg-gray-900 text-white px-4 py-3 flex items-center justify-between">
-                    <p className="font-bold">Table {cmd.table?.numero ?? '?'}</p>
-                    <p className="text-xs text-gray-300">{cmd.code ?? `#${cmd.id}`}</p>
-                  </div>
-                  <div className="p-3 space-y-2">
-                    {cmd.lignes?.map((ligne) => {
-                      const cfg = STATUT_LIGNE[ligne.statut] ?? STATUT_LIGNE.en_cours
-                      const nextStatut = STATUT_NEXT[ligne.statut]
-                      return (
-                        <div key={ligne.id} className={`border rounded-lg p-3 ${cfg.bg}`}>
-                          <div className="flex items-start justify-between gap-2">
-                            <div>
-                              <p className="text-sm font-medium text-gray-900">
-                                x{ligne.quantite} {ligne.plat?.nom ?? `Plat #${ligne.plat_id}`}
-                              </p>
-                              {ligne.note && <p className="text-xs text-gray-500 italic mt-0.5">"{ligne.note}"</p>}
-                              <p className="text-xs text-gray-400 mt-0.5">{cfg.label}</p>
-                            </div>
-                            {nextStatut && (
-                              <button
-                                onClick={() => handleMajLigne(ligne.id, nextStatut)}
-                                className={`text-xs text-white px-2.5 py-1.5 rounded-lg shrink-0 ${cfg.btn}`}
-                              >
-                                {STATUT_NEXT_LABEL[ligne.statut]}
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )
-        )}
+      {commandes.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-24 text-gray-400">
+          <svg className="w-16 h-16 mb-4 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1}
+              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+          </svg>
+          <p className="text-lg font-medium">Aucune commande en attente</p>
+          <p className="text-sm mt-1">Tout est à jour !</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+          {commandes.map(cmd => {
+            const cfg = STATUT_COMMANDE[cmd.statut] || STATUT_COMMANDE.envoyee
+            const allPret = cmd.lignes.length > 0 && cmd.lignes.every(l => l.statut === 'prete')
 
-        {/* Proposer un plat */}
-        {tab === 'proposer' && (
-          <div className="max-w-md">
-            <h2 className="text-lg font-bold text-gray-900 mb-4">Proposer un nouveau plat</h2>
-            {propSent && (
-              <div className="bg-green-50 border border-green-200 text-green-700 text-sm px-4 py-3 rounded-xl mb-4">
-                Proposition envoyée au gérant !
-              </div>
-            )}
-            <form onSubmit={handleProposer} className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
-              {[
-                { label: 'Nom du plat', key: 'nom' },
-                { label: 'Description', key: 'description' },
-                { label: 'Prix suggéré (€)', key: 'prix', type: 'number', step: '0.01' },
-              ].map(({ label, key, ...props }) => (
-                <div key={key}>
-                  <label className="block text-xs text-gray-500 mb-1">{label}</label>
-                  <input
-                    required
-                    {...props}
-                    value={form[key]}
-                    onChange={(e) => setForm(f => ({ ...f, [key]: e.target.value }))}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300"
-                  />
-                </div>
-              ))}
-              <button type="submit" className="w-full bg-gray-900 text-white py-2.5 rounded-lg text-sm font-medium hover:bg-gray-700">
-                Envoyer la proposition
-              </button>
-            </form>
-          </div>
-        )}
-
-        {/* Mes propositions */}
-        {tab === 'mes-props' && (
-          <div className="max-w-lg space-y-3">
-            <h2 className="text-lg font-bold text-gray-900 mb-4">Mes propositions</h2>
-            {propositions.map((p) => (
-              <div key={p.id} className="bg-white border border-gray-200 rounded-xl p-4">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="font-medium text-gray-900">{p.nom}</p>
-                    <p className="text-sm text-gray-400 mt-0.5">{p.description}</p>
-                    <p className="text-sm font-bold mt-1">{p.prix} €</p>
-                    {p.motif_refus && <p className="text-xs text-red-500 mt-1">Motif : {p.motif_refus}</p>}
+            return (
+              <div key={cmd.id} className={`bg-white rounded-2xl border-2 shadow-sm overflow-hidden ${cfg.bg}`}>
+                {/* Header */}
+                <div className={`${cfg.color} px-4 py-3 flex items-center justify-between`}>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-white text-sm">{cmd.code_unique}</span>
+                    {cmd.table && (
+                      <span className="bg-white/20 text-white text-xs px-2 py-0.5 rounded-full font-medium">
+                        Table {cmd.table.numero}
+                      </span>
+                    )}
                   </div>
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${STATUT_PROP_BADGE[p.statut] ?? 'bg-gray-100 text-gray-500'}`}>
-                    {p.statut}
+                  <Timer dateHeure={cmd.date_heure} />
+                </div>
+
+                {/* Status badge */}
+                <div className="px-4 pt-3 pb-1 flex items-center justify-between">
+                  <span className={`text-xs font-semibold uppercase tracking-wide ${cfg.text}`}>
+                    {cfg.label}
                   </span>
+                  {allPret && (
+                    <span className="text-xs font-semibold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
+                      ✓ Tout prêt
+                    </span>
+                  )}
+                </div>
+
+                {/* Lignes */}
+                <div className="px-4 pb-4 space-y-2">
+                  {cmd.lignes.map(l => {
+                    const ls = STATUT_LIGNE[l.statut] || STATUT_LIGNE.en_cours
+                    const isDone = l.statut === 'prete'
+                    return (
+                      <div key={l.id} className={`flex items-start gap-3 p-3 rounded-xl ${isDone ? 'bg-green-50' : 'bg-gray-50'}`}>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className={`font-semibold text-sm ${isDone ? 'text-green-700 line-through decoration-green-400' : 'text-gray-900'}`}>
+                              {l.quantite}× {l.plat_nom}
+                            </span>
+                          </div>
+                          {l.note && (
+                            <p className="text-xs text-amber-700 bg-amber-50 px-2 py-0.5 rounded mt-1 inline-block">
+                              📝 {l.note}
+                            </p>
+                          )}
+                          <span className={`text-xs px-2 py-0.5 rounded-full mt-1 inline-block font-medium ${ls.badge}`}>
+                            {ls.label}
+                          </span>
+                        </div>
+                        {!isDone && (
+                          <button
+                            onClick={() => markLigne(l.id, l.statut)}
+                            className={`shrink-0 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors ${
+                              l.statut === 'en_cours'
+                                ? 'bg-amber-500 hover:bg-amber-600 text-white'
+                                : 'bg-green-500 hover:bg-green-600 text-white'
+                            }`}
+                          >
+                            {l.statut === 'en_cours' ? '▶ Démarrer' : '✓ Prêt'}
+                          </button>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {/* Actions */}
+                <div className="px-4 pb-4">
+                  {cmd.statut === 'envoyee' && (
+                    <button
+                      onClick={() => startCommande(cmd.id)}
+                      className="w-full bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold py-2.5 rounded-xl transition-colors"
+                    >
+                      ▶ Prendre en charge
+                    </button>
+                  )}
                 </div>
               </div>
-            ))}
-            {propositions.length === 0 && <p className="text-sm text-gray-400">Aucune proposition.</p>}
-          </div>
-        )}
-      </div>
+            )
+          })}
+        </div>
+      )}
+
+      {toast && (
+        <div className={`fixed bottom-5 right-5 z-50 px-4 py-3 rounded-xl text-white text-sm font-medium shadow-xl ${toast.type === 'error' ? 'bg-red-500' : 'bg-green-500'}`}>
+          {toast.msg}
+        </div>
+      )}
     </div>
   )
 }

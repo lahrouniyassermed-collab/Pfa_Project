@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import GerantLayout from '../components/shared/GerantLayout'
 import {
   getRestaurantInfo, updateRestaurantInfo,
   getSalles, creerSalle, modifierSalle, supprimerSalle,
@@ -151,10 +150,10 @@ export default function GerantSettings() {
     setAvis(r.data)
   }
 
-  if (!info) return <GerantLayout><div className="p-8 text-gray-400 text-sm">Chargement…</div></GerantLayout>
+  if (!info) return <div className="p-8 text-gray-400 text-sm">Chargement…</div>
 
   return (
-    <GerantLayout>
+    <div>
       <div className="p-8">
         <h1 className="text-2xl font-bold text-gray-900 mb-6">Paramètres du restaurant</h1>
 

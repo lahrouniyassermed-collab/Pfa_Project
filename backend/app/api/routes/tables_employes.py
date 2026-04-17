@@ -26,6 +26,9 @@ def liste_tables(db: Session = Depends(get_db)):
 
 @router_tables.post("/")
 def creer_table(data: TableCreate, db: Session = Depends(get_db), _=Depends(require_role("gerant"))):
+    existing = db.query(Table).filter(Table.numero == data.numero).first()
+    if existing:
+        raise HTTPException(400, f"Table n°{data.numero} existe déjà")
     table = Table(
         numero=data.numero,
         capacite=data.capacite,
@@ -40,6 +43,7 @@ def creer_table(data: TableCreate, db: Session = Depends(get_db), _=Depends(requ
     qr.save(buf, format="PNG")
     table.qr_code_url = f"data:image/png;base64,{base64.b64encode(buf.getvalue()).decode()}"
     db.commit()
+    db.refresh(table)
     return table
 
 @router_tables.put("/{table_id}/statut")
@@ -74,7 +78,17 @@ class EmployeCreate(BaseModel):
 
 @router_employes.get("/")
 def liste_employes(db: Session = Depends(get_db), _=Depends(require_role("gerant"))):
-    return db.query(Employe).all()
+    employes = db.query(Employe).order_by(Employe.nom).all()
+    return [{
+        "id": e.id,
+        "nom": e.nom,
+        "prenom": e.prenom,
+        "identifiant": e.identifiant,
+        "role": e.role.value,
+        "telephone": e.telephone,
+        "actif": e.actif,
+        "date_embauche": e.date_embauche.isoformat() if e.date_embauche else None,
+    } for e in employes]
 
 @router_employes.post("/")
 def creer_employe(data: EmployeCreate, db: Session = Depends(get_db), _=Depends(require_role("gerant"))):
@@ -108,36 +122,60 @@ def toggle_actif(emp_id: int, actif: bool, db: Session = Depends(get_db), _=Depe
 
 @router_dashboard.get("/")
 def dashboard(db: Session = Depends(get_db), _=Depends(require_role("gerant"))):
-    from app.models.models import Commande, Plat, Avis, StatutCommandeEnum, SentimentEnum
+    from app.models.models import (
+        Commande, Plat, Avis, LigneCommande, Ingredient,
+        StatutCommandeEnum, SentimentEnum, StatutPlatEnum, StatutTableEnum
+    )
     from sqlalchemy import func
+    from datetime import date
+
+    today = date.today()
 
     # Chiffre d'affaires aujourd'hui
-    from datetime import date
-    today = date.today()
     ca_today = db.query(func.sum(Commande.montant_total)).filter(
         func.date(Commande.date_heure) == today,
         Commande.statut == StatutCommandeEnum.cloturee
     ).scalar() or 0
 
-    # Plats les plus commandés
-    from app.models.models import LigneCommande
+    # Top 5 plats
     top_plats = db.query(
         Plat.nom, func.sum(LigneCommande.quantite).label("total")
-    ).join(LigneCommande).group_by(Plat.id).order_by(func.sum(LigneCommande.quantite).desc()).limit(5).all()
+    ).join(LigneCommande).group_by(Plat.id).order_by(
+        func.sum(LigneCommande.quantite).desc()
+    ).limit(5).all()
 
-    # Avis en attente
+    # Avis en attente de validation manuelle
     avis_en_attente = db.query(Avis).filter(Avis.statut == "en_attente").count()
 
-    # Répartition sentiments
+    # Répartition sentiments (toutes tombolas)
     sentiments = {
         "positif": db.query(Avis).filter(Avis.sentiment == SentimentEnum.positif).count(),
-        "neutre": db.query(Avis).filter(Avis.sentiment == SentimentEnum.neutre).count(),
+        "neutre":  db.query(Avis).filter(Avis.sentiment == SentimentEnum.neutre).count(),
         "negatif": db.query(Avis).filter(Avis.sentiment == SentimentEnum.negatif).count(),
     }
 
     # Propositions cuisinier en attente
-    from app.models.models import StatutPlatEnum
     propositions = db.query(Plat).filter(Plat.statut == StatutPlatEnum.en_attente).count()
+
+    # Ingrédients en alerte de stock
+    ingredients_alerte = db.query(Ingredient).filter(
+        Ingredient.seuil_alerte > 0,
+        Ingredient.quantite_stock <= Ingredient.seuil_alerte
+    ).count()
+
+    # Statut des tables
+    tables_libres   = db.query(Table).filter(Table.statut == StatutTableEnum.libre).count()
+    tables_occupees = db.query(Table).filter(Table.statut == StatutTableEnum.occupee).count()
+    tables_reservees = db.query(Table).filter(Table.statut == StatutTableEnum.reservee).count()
+
+    # Commandes actives (en cours / envoyées / en préparation)
+    commandes_actives = db.query(Commande).filter(
+        Commande.statut.in_([
+            StatutCommandeEnum.en_cours,
+            StatutCommandeEnum.envoyee,
+            StatutCommandeEnum.en_preparation,
+        ])
+    ).count()
 
     return {
         "ca_aujourd_hui": round(ca_today, 2),
@@ -145,4 +183,9 @@ def dashboard(db: Session = Depends(get_db), _=Depends(require_role("gerant"))):
         "avis_en_attente": avis_en_attente,
         "sentiments": sentiments,
         "propositions_cuisinier_en_attente": propositions,
+        "ingredients_alerte": ingredients_alerte,
+        "tables_libres": tables_libres,
+        "tables_occupees": tables_occupees,
+        "tables_reservees": tables_reservees,
+        "commandes_actives": commandes_actives,
     }
