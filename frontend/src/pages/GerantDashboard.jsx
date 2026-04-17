@@ -1,75 +1,123 @@
-import { useAuth } from '../hooks/useAuth'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts'
+import GerantLayout from '../components/shared/GerantLayout'
+import { getDashboard } from '../services/api'
+
+const SENTIMENT_COLORS = {
+  positif: '#22c55e',
+  neutre: '#f59e0b',
+  negatif: '#ef4444',
+}
 
 export default function GerantDashboard() {
-  const { user, logout } = useAuth()
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
 
-  function handleLogout() {
-    logout()
-    navigate('/login')
-  }
+  useEffect(() => {
+    getDashboard()
+      .then((res) => setData(res.data))
+      .catch(console.error)
+      .finally(() => setLoading(false))
+  }, [])
+
+  const sentimentData = data
+    ? Object.entries(data.sentiments).map(([name, value]) => ({ name, value }))
+    : []
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-gray-900">MangerManger</h1>
-        <div className="flex items-center gap-4">
-          <span className="text-sm text-gray-500">
-            {user?.prenom} {user?.nom}
-          </span>
-          <button
-            onClick={handleLogout}
-            className="text-sm text-red-500 hover:text-red-700"
-          >
-            Déconnexion
-          </button>
-        </div>
-      </div>
-
-      {/* Content */}
+    <GerantLayout>
       <div className="p-8">
-        <h2 className="text-2xl font-bold text-gray-800 mb-2">Tableau de bord</h2>
-        <p className="text-gray-500 mb-8">Bienvenue, {user?.prenom} !</p>
+        <h1 className="text-2xl font-bold text-gray-900 mb-1">Tableau de bord</h1>
+        <p className="text-sm text-gray-400 mb-8">Vue d'ensemble du restaurant aujourd'hui</p>
 
-        {/* Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-white rounded-xl border border-gray-200 p-6">
-            <p className="text-sm text-gray-500 mb-1">Rôle</p>
-            <p className="text-2xl font-bold text-gray-900 capitalize">{user?.role}</p>
-          </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-6">
-            <p className="text-sm text-gray-500 mb-1">Identifiant</p>
-            <p className="text-2xl font-bold text-gray-900">{user?.identifiant}</p>
-          </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-6">
-            <p className="text-sm text-gray-500 mb-1">Statut</p>
-            <p className="text-2xl font-bold text-green-600">Connecté</p>
-          </div>
-        </div>
+        {loading ? (
+          <div className="text-gray-400 text-sm">Chargement…</div>
+        ) : (
+          <>
+            {/* KPI Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+              <KpiCard
+                label="CA aujourd'hui"
+                value={`${data?.ca_aujourd_hui?.toFixed(2)} €`}
+                color="text-green-600"
+              />
+              <KpiCard
+                label="Avis en attente"
+                value={data?.avis_en_attente ?? 0}
+                color="text-amber-500"
+                onClick={() => navigate('/gerant/tombola')}
+                clickable
+              />
+              <KpiCard
+                label="Propositions cuisinier"
+                value={data?.propositions_cuisinier_en_attente ?? 0}
+                color="text-blue-500"
+                onClick={() => navigate('/gerant/menu')}
+                clickable
+              />
+              <KpiCard
+                label="Sentiments positifs"
+                value={`${data?.sentiments?.positif ?? 0} avis`}
+                color="text-emerald-500"
+              />
+            </div>
 
-        {/* Menu rapide */}
-        <div className="mt-8">
-          <h3 className="text-lg font-semibold text-gray-800 mb-4">Menu rapide</h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {[
-              { label: 'Menu', desc: 'Gérer les plats' },
-              { label: 'Tables', desc: 'Voir le plan' },
-              { label: 'Réservations', desc: 'Gérer les résa' },
-              { label: 'Personnel', desc: 'Gérer le staff' },
-            ].map(item => (
-              <div
-                key={item.label}
-                className="bg-white rounded-xl border border-gray-200 p-5 cursor-pointer hover:border-gray-400 transition-colors"
-              >
-                <p className="font-semibold text-gray-800">{item.label}</p>
-                <p className="text-sm text-gray-500 mt-1">{item.desc}</p>
+            {/* Charts */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Top plats */}
+              <div className="bg-white rounded-xl border border-gray-200 p-6">
+                <h2 className="text-base font-semibold text-gray-800 mb-5">Top 5 plats commandés</h2>
+                {data?.top_plats?.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={220}>
+                    <BarChart data={data.top_plats} layout="vertical" margin={{ left: 10 }}>
+                      <XAxis type="number" tick={{ fontSize: 12 }} />
+                      <YAxis dataKey="nom" type="category" tick={{ fontSize: 12 }} width={120} />
+                      <Tooltip />
+                      <Bar dataKey="total_commandes" fill="#111827" radius={[0, 4, 4, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <p className="text-sm text-gray-400 mt-4">Aucune commande aujourd'hui.</p>
+                )}
               </div>
-            ))}
-          </div>
-        </div>
+
+              {/* Sentiments */}
+              <div className="bg-white rounded-xl border border-gray-200 p-6">
+                <h2 className="text-base font-semibold text-gray-800 mb-5">Répartition des sentiments</h2>
+                {sentimentData.some((s) => s.value > 0) ? (
+                  <ResponsiveContainer width="100%" height={220}>
+                    <PieChart>
+                      <Pie data={sentimentData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
+                        {sentimentData.map((entry) => (
+                          <Cell key={entry.name} fill={SENTIMENT_COLORS[entry.name] ?? '#ccc'} />
+                        ))}
+                      </Pie>
+                      <Legend />
+                      <Tooltip />
+                    </PieChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <p className="text-sm text-gray-400 mt-4">Aucun avis pour l'instant.</p>
+                )}
+              </div>
+            </div>
+          </>
+        )}
       </div>
+    </GerantLayout>
+  )
+}
+
+function KpiCard({ label, value, color, onClick, clickable }) {
+  return (
+    <div
+      className={`bg-white rounded-xl border border-gray-200 p-5 ${clickable ? 'cursor-pointer hover:border-gray-400 transition-colors' : ''}`}
+      onClick={onClick}
+    >
+      <p className="text-xs text-gray-500 mb-1">{label}</p>
+      <p className={`text-2xl font-bold ${color}`}>{value}</p>
     </div>
   )
 }

@@ -2,7 +2,7 @@
 
 ## Vue d'ensemble
 Système de gestion de restaurant complet développé en Python (FastAPI) + React.
-PFA universitaire — 2 développeurs — délai : 60 jours.
+PFA universitaire — 2 développeurs — délai : 40 jours.
 
 ---
 
@@ -10,9 +10,9 @@ PFA universitaire — 2 développeurs — délai : 60 jours.
 
 | Couche | Technologie |
 |--------|-------------|
-| Backend | Python 3.11 + FastAPI + Uvicorn |
+| Backend | Python 3.11 + FastAPI + Uvicorn | i think we use 3.9 can you check 
 | ORM | SQLAlchemy 2.0 + Alembic |
-| Base de données | PostgreSQL |
+| Base de données | PostgreSQL | sqlLite pour l'instant |
 | Auth | JWT (python-jose) + bcrypt (passlib) |
 | Frontend | React 18 + Vite + Tailwind CSS |
 | HTTP client | Axios |

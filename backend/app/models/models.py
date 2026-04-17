@@ -260,3 +260,94 @@ class Avis(Base):
 
     tombola_id = Column(Integer, ForeignKey("tombolas.id"))
     tombola = relationship("Tombola", back_populates="participations")
+
+
+class RestaurantInfo(Base):
+    __tablename__ = "restaurant_info"
+
+    id = Column(Integer, primary_key=True, index=True)
+    nom = Column(String(200), nullable=False)
+    slogan = Column(String(300), default="")
+    description = Column(Text, default="")
+    adresse = Column(String(300), default="")
+    telephone = Column(String(30), default="")
+    email_contact = Column(String(200), default="")
+    horaires = Column(String(200), default="")
+    logo_url = Column(String(500), default="")
+    # Thème & couleurs
+    theme = Column(String(20), default="elegant")          # elegant | chaud | moderne
+    couleur_principale = Column(String(10), default="#111827")
+    # Sections activées (JSON)
+    section_menu = Column(Boolean, default=True)
+    section_reservations = Column(Boolean, default=True)
+    section_tombola = Column(Boolean, default=False)
+    section_recrutement = Column(Boolean, default=False)
+    section_avis = Column(Boolean, default=True)
+    # Réseaux sociaux
+    instagram_url = Column(String(300), default="")
+    facebook_url = Column(String(300), default="")
+
+    salles_privees = relationship("SallePrivee", back_populates="restaurant")
+    offres_emploi = relationship("OffreEmploi", back_populates="restaurant")
+    avis_clients = relationship("AvisClient", back_populates="restaurant")
+
+
+class SallePrivee(Base):
+    __tablename__ = "salles_privees"
+
+    id = Column(Integer, primary_key=True, index=True)
+    nom = Column(String(200), nullable=False)
+    description = Column(Text, default="")
+    capacite = Column(Integer, nullable=False)
+    prix_location = Column(Float, nullable=False)
+    photo_url = Column(String(500), default="")
+    disponible = Column(Boolean, default=True)
+
+    restaurant_id = Column(Integer, ForeignKey("restaurant_info.id"))
+    restaurant = relationship("RestaurantInfo", back_populates="salles_privees")
+
+
+class OffreEmploi(Base):
+    __tablename__ = "offres_emploi"
+
+    id = Column(Integer, primary_key=True, index=True)
+    titre = Column(String(200), nullable=False)
+    description = Column(Text, nullable=False)
+    type_contrat = Column(String(50), default="CDI")       # CDI | CDD | Stage | Temps partiel
+    date_publication = Column(DateTime, server_default=func.now())
+    active = Column(Boolean, default=True)
+
+    restaurant_id = Column(Integer, ForeignKey("restaurant_info.id"))
+    restaurant = relationship("RestaurantInfo", back_populates="offres_emploi")
+    candidatures = relationship("Candidature", back_populates="offre")
+
+
+class Candidature(Base):
+    __tablename__ = "candidatures"
+
+    id = Column(Integer, primary_key=True, index=True)
+    nom = Column(String(100), nullable=False)
+    prenom = Column(String(100), nullable=False)
+    email = Column(String(200), nullable=False)
+    telephone = Column(String(30), default="")
+    message = Column(Text, default="")
+    date_depot = Column(DateTime, server_default=func.now())
+    lue = Column(Boolean, default=False)
+
+    offre_id = Column(Integer, ForeignKey("offres_emploi.id"))
+    offre = relationship("OffreEmploi", back_populates="candidatures")
+
+
+class AvisClient(Base):
+    __tablename__ = "avis_clients"
+
+    id = Column(Integer, primary_key=True, index=True)
+    nom = Column(String(100), nullable=False)
+    note = Column(Integer, nullable=False)                 # 1 à 5
+    commentaire = Column(Text, default="")
+    statut = Column(Enum(StatutAvisEnum), default=StatutAvisEnum.en_attente)
+    sentiment = Column(Enum(SentimentEnum), nullable=True)
+    date_depot = Column(DateTime, server_default=func.now())
+
+    restaurant_id = Column(Integer, ForeignKey("restaurant_info.id"))
+    restaurant = relationship("RestaurantInfo", back_populates="avis_clients")

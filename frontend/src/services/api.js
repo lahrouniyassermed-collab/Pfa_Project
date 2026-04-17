@@ -77,4 +77,37 @@ export const getDashboard = () => api.get('/api/dashboard/')
 export const getEmployes = () => api.get('/api/employes/')
 export const creerEmploye = (data) => api.post('/api/employes/', data)
 
+// ── RESTAURANT ────────────────────────────────────────────────
+export const getRestaurantInfo = () => api.get('/api/restaurant/')
+export const updateRestaurantInfo = (data) => api.put('/api/restaurant/', data)
+
+// ── SETUP ─────────────────────────────────────────────────────
+export const getSetupStatus = () => api.get('/api/setup/status')
+export const setupRestaurant = (data) => api.post('/api/setup/', data)
+
+// ── LANDING ───────────────────────────────────────────────────
+export const getLanding = () => api.get('/api/landing/')
+
+// ── SALLES PRIVÉES ────────────────────────────────────────────
+export const getSalles = () => api.get('/api/salles/')
+export const creerSalle = (data) => api.post('/api/salles/', data)
+export const modifierSalle = (id, data) => api.put(`/api/salles/${id}`, data)
+export const supprimerSalle = (id) => api.delete(`/api/salles/${id}`)
+
+// ── OFFRES D'EMPLOI ───────────────────────────────────────────
+export const getOffres = () => api.get('/api/emplois/')
+export const creerOffre = (data) => api.post('/api/emplois/', data)
+export const modifierOffre = (id, data) => api.put(`/api/emplois/${id}`, data)
+export const supprimerOffre = (id) => api.delete(`/api/emplois/${id}`)
+export const postuler = (offreId, data) => api.post(`/api/emplois/${offreId}/postuler`, data)
+export const getCandidatures = () => api.get('/api/emplois/candidatures')
+export const marquerCandidatureLue = (id) => api.put(`/api/emplois/candidatures/${id}/lue`)
+
+// ── AVIS CLIENTS ──────────────────────────────────────────────
+export const getAvisPublics = () => api.get('/api/avis-clients/')
+export const deposerAvis = (data) => api.post('/api/avis-clients/', data)
+export const getAvisAdmin = () => api.get('/api/avis-clients/admin')
+export const validerAvisClient = (id) => api.put(`/api/avis-clients/${id}/valider`)
+export const rejeterAvisClient = (id) => api.put(`/api/avis-clients/${id}/rejeter`)
+
 export default api
