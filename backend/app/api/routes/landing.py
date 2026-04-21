@@ -1,13 +1,17 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, List
+import os, uuid, shutil
 from app.core.database import get_db
 from app.core.security import require_role
 from app.models.models import (
     RestaurantInfo, SallePrivee, OffreEmploi, Candidature,
-    AvisClient, StatutAvisEnum, SentimentEnum
+    AvisClient, StatutAvisEnum, SentimentEnum, Employe
 )
+
+CV_DIR = "uploads/cv"
+os.makedirs(CV_DIR, exist_ok=True)
 
 router_landing = APIRouter(prefix="/api/landing", tags=["Landing"])
 router_salles = APIRouter(prefix="/api/salles", tags=["Salles privées"])
@@ -41,11 +45,22 @@ def get_landing(db: Session = Depends(get_db)):
         AvisClient.statut == StatutAvisEnum.valide
     ).order_by(AvisClient.date_depot.desc()).limit(10).all()
 
+    equipe = db.query(Employe).filter(
+        Employe.afficher_landing == True,
+        Employe.actif == True
+    ).all()
+    equipe_data = [
+        {"id": e.id, "prenom": e.prenom, "nom": e.nom,
+         "role": e.role.value, "photo_url": e.photo_url or ""}
+        for e in equipe
+    ]
+
     return {
         "info": info,
         "salles_privees": salles,
         "offres_emploi": emplois,
         "avis_clients": avis,
+        "equipe": equipe_data,
     }
 
 
@@ -127,6 +142,19 @@ class CandidatureCreate(BaseModel):
     telephone: str = ""
     message: str = ""
 
+class CandidatureOut(BaseModel):
+    id: int
+    nom: str
+    prenom: str
+    email: str
+    telephone: str
+    message: str
+    cv_url: str
+    lue: bool
+    offre_id: int
+    class Config:
+        from_attributes = True
+
 @router_emplois.get("/")
 def liste_offres(db: Session = Depends(get_db)):
     info = db.query(RestaurantInfo).first()
@@ -167,18 +195,60 @@ def supprimer_offre(offre_id: int, db: Session = Depends(get_db), _=Depends(requ
     return {"message": "Offre supprimée."}
 
 @router_emplois.post("/{offre_id}/postuler")
-def postuler(offre_id: int, data: CandidatureCreate, db: Session = Depends(get_db)):
+async def postuler(
+    offre_id: int,
+    nom: str = Form(...),
+    prenom: str = Form(...),
+    email: str = Form(...),
+    telephone: str = Form(""),
+    message: str = Form(""),
+    cv: Optional[UploadFile] = File(None),
+    db: Session = Depends(get_db),
+):
     offre = db.query(OffreEmploi).filter(OffreEmploi.id == offre_id, OffreEmploi.active == True).first()
     if not offre:
         raise HTTPException(404, "Offre introuvable ou fermée.")
-    candidature = Candidature(**data.model_dump(), offre_id=offre_id)
+
+    cv_url = ""
+    if cv and cv.filename:
+        ext = os.path.splitext(cv.filename)[1].lower()
+        if ext not in (".pdf", ".doc", ".docx"):
+            raise HTTPException(400, "Format CV accepté : PDF, DOC, DOCX")
+        filename = f"{uuid.uuid4().hex}{ext}"
+        dest = os.path.join(CV_DIR, filename)
+        with open(dest, "wb") as f:
+            shutil.copyfileobj(cv.file, f)
+        cv_url = f"/uploads/cv/{filename}"
+
+    candidature = Candidature(
+        nom=nom, prenom=prenom, email=email,
+        telephone=telephone, message=message,
+        cv_url=cv_url, offre_id=offre_id,
+    )
     db.add(candidature)
     db.commit()
     return {"message": "Candidature envoyée avec succès."}
 
 @router_emplois.get("/candidatures")
 def liste_candidatures(db: Session = Depends(get_db), _=Depends(require_role("gerant"))):
-    return db.query(Candidature).order_by(Candidature.date_depot.desc()).all()
+    candidatures = db.query(Candidature).order_by(Candidature.date_depot.desc()).all()
+    result = []
+    for c in candidatures:
+        offre = db.query(OffreEmploi).filter(OffreEmploi.id == c.offre_id).first()
+        result.append({
+            "id": c.id,
+            "nom": c.nom,
+            "prenom": c.prenom,
+            "email": c.email,
+            "telephone": c.telephone,
+            "message": c.message,
+            "cv_url": c.cv_url or "",
+            "lue": c.lue,
+            "offre_id": c.offre_id,
+            "offre_titre": offre.titre if offre else "",
+            "date_depot": c.date_depot.isoformat() if c.date_depot else "",
+        })
+    return result
 
 @router_emplois.put("/candidatures/{cand_id}/lue")
 def marquer_lue(cand_id: int, db: Session = Depends(get_db), _=Depends(require_role("gerant"))):

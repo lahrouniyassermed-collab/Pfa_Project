@@ -131,9 +131,16 @@ export default function CuisinierInterface() {
 
                 {/* Status badge */}
                 <div className="px-4 pt-3 pb-1 flex items-center justify-between">
-                  <span className={`text-xs font-semibold uppercase tracking-wide ${cfg.text}`}>
-                    {cfg.label}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-xs font-semibold uppercase tracking-wide ${cfg.text}`}>
+                      {cfg.label}
+                    </span>
+                    {cmd.cuisinier && (
+                      <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-medium">
+                        👨‍🍳 {cmd.cuisinier}
+                      </span>
+                    )}
+                  </div>
                   {allPret && (
                     <span className="text-xs font-semibold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
                       ✓ Tout prêt

@@ -11,6 +11,11 @@ class Settings(BaseSettings):
     SMTP_USER: str = ""
     SMTP_PASSWORD: str = ""
     RESTAURANT_NAME: str = "MangerManger"
+    RESEND_API_KEY: str = ""
+    FRONTEND_URL: str = "http://localhost:5173"
+    BACKEND_URL: str = "http://localhost:8000"
+    STRIPE_SECRET_KEY: str = ""
+    STRIPE_PUBLISHABLE_KEY: str = ""
 
     class Config:
         env_file = ".env"

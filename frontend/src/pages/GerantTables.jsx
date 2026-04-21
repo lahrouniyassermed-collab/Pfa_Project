@@ -52,7 +52,11 @@ export default function GerantTables() {
     finally { setLoading(false) }
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    load()
+    const id = setInterval(load, 10000)   // refresh toutes les 10s
+    return () => clearInterval(id)
+  }, [])
 
   async function create() {
     if (!form.numero || !form.capacite) return notify('Numéro et capacité requis', 'error')

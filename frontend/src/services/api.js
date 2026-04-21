@@ -1,7 +1,7 @@
 import axios from 'axios'
 
 const api = axios.create({
-  baseURL: 'http://localhost:8000',
+  baseURL: 'http://localhost:8001',
   timeout: 30000,
 })
 
@@ -68,6 +68,11 @@ export const getCommandesCuisine= ()        => api.get('/api/commandes/cuisine')
 export const majStatutLigne     = (id, s)   => api.put(`/api/commandes/ligne/${id}/statut?statut=${s}`)
 export const majStatutCommande  = (id, s)   => api.put(`/api/commandes/${id}/statut?statut=${s}`)
 export const toutesCommandes    = ()        => api.get('/api/commandes/')
+export const suiviCommande      = (id)      => api.get(`/api/commandes/${id}/suivi`)
+export const annulerCommande    = (id)      => api.post(`/api/commandes/${id}/annuler`)
+export const getNotifs          = ()        => api.get('/api/commandes/notifications/non-lues')
+export const marquerNotifLue    = (id)      => api.put(`/api/commandes/notifications/${id}/lue`)
+export const toutLireNotifs     = ()        => api.put('/api/commandes/notifications/tout-lire')
 
 // ── TABLES ────────────────────────────────────────────────
 export const getTables          = ()        => api.get('/api/tables/')
@@ -94,9 +99,11 @@ export const tirageAuSort       = (id)      => api.post(`/api/tombola/${id}/tira
 export const getDashboard       = ()        => api.get('/api/dashboard/')
 
 // ── EMPLOYÉS ──────────────────────────────────────────────
-export const getEmployes        = ()        => api.get('/api/employes/')
-export const creerEmploye       = (data)    => api.post('/api/employes/', data)
-export const toggleActifEmploye = (id, actif) => api.put(`/api/employes/${id}/actif?actif=${actif}`)
+export const getEmployes           = ()             => api.get('/api/employes/')
+export const creerEmploye          = (data)         => api.post('/api/employes/', data)
+export const toggleActifEmploye    = (id, actif)    => api.put(`/api/employes/${id}/actif?actif=${actif}`)
+export const modifierEmploye       = (id, data)     => api.put(`/api/employes/${id}`, data)
+export const toggleLandingEmploye  = (id, afficher) => api.put(`/api/employes/${id}/landing?afficher=${afficher}`)
 
 // ── RESTAURANT ────────────────────────────────────────────────
 export const getRestaurantInfo = () => api.get('/api/restaurant/')
@@ -120,7 +127,9 @@ export const getOffres = () => api.get('/api/emplois/')
 export const creerOffre = (data) => api.post('/api/emplois/', data)
 export const modifierOffre = (id, data) => api.put(`/api/emplois/${id}`, data)
 export const supprimerOffre = (id) => api.delete(`/api/emplois/${id}`)
-export const postuler = (offreId, data) => api.post(`/api/emplois/${offreId}/postuler`, data)
+export const postuler = (offreId, formData) => api.post(`/api/emplois/${offreId}/postuler`, formData, {
+  headers: { 'Content-Type': 'multipart/form-data' }
+})
 export const getCandidatures = () => api.get('/api/emplois/candidatures')
 export const marquerCandidatureLue = (id) => api.put(`/api/emplois/candidatures/${id}/lue`)
 
@@ -130,5 +139,16 @@ export const deposerAvis = (data) => api.post('/api/avis-clients/', data)
 export const getAvisAdmin = () => api.get('/api/avis-clients/admin')
 export const validerAvisClient = (id) => api.put(`/api/avis-clients/${id}/valider`)
 export const rejeterAvisClient = (id) => api.put(`/api/avis-clients/${id}/rejeter`)
+
+// ── QR COMMANDE (public) ──────────────────────────────────────────────────
+export const getTableQR            = (tableId)    => api.get(`/api/qr/table/${tableId}`)
+export const creerCommandeQR       = (data)        => api.post('/api/qr/commande', data)
+export const createPaymentIntent   = (commandeId)  => api.post(`/api/qr/create-payment-intent/${commandeId}`)
+export const confirmerPaiement     = (commandeId, data) => api.post(`/api/qr/confirmer-paiement/${commandeId}`, data)
+export const payerEspeces          = (commandeId)  => api.post(`/api/qr/paiement-especes/${commandeId}`)
+export const statutCommandeQR      = (commandeId)  => api.get(`/api/qr/commande/${commandeId}`)
+
+// ── CLIENTS FIDÉLITÉ (public) ─────────────────────────────────────────────
+export const inscrireClient    = (data) => api.post('/api/clients/inscrire', data)
 
 export default api

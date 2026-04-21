@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getLanding, getMenu, creerReservation, deposerAvis, postuler } from '../services/api'
+import { getLanding, getMenu, creerReservation, deposerAvis, postuler, inscrireClient } from '../services/api'
 
 // ── Configs des thèmes ────────────────────────────────────────
 const THEMES = {
@@ -67,6 +67,7 @@ export default function LandingPage() {
   const [avisForm, setAvisForm] = useState({ nom: '', note: 5, commentaire: '' })
   const [avisSent, setAvisSent] = useState(false)
   const [candidatureForm, setCandidatureForm] = useState({ nom: '', prenom: '', email: '', telephone: '', message: '' })
+  const [candidatureCv, setCandidatureCv] = useState(null)
   const [candidatureSent, setCandidatureSent] = useState(null)
   const [activeOffre, setActiveOffre] = useState(null)
 
@@ -98,10 +99,14 @@ export default function LandingPage() {
 
   async function handleCandidature(e) {
     e.preventDefault()
-    await postuler(activeOffre, candidatureForm)
+    const fd = new FormData()
+    Object.entries(candidatureForm).forEach(([k, v]) => fd.append(k, v))
+    if (candidatureCv) fd.append('cv', candidatureCv)
+    await postuler(activeOffre, fd)
     setCandidatureSent(activeOffre)
     setActiveOffre(null)
     setCandidatureForm({ nom: '', prenom: '', email: '', telephone: '', message: '' })
+    setCandidatureCv(null)
   }
 
   if (loading) {
@@ -191,6 +196,33 @@ export default function LandingPage() {
                 </div>
               </div>
             ))}
+          </div>
+        </section>
+      )}
+
+      {/* ── ÉQUIPE ── */}
+      {data.equipe?.length > 0 && (
+        <section className={`py-20 px-6 ${theme.sectionAltBg}`}>
+          <div className="max-w-4xl mx-auto">
+            <SectionTitle title="Notre Équipe" theme={theme} couleur={couleur} />
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-6">
+              {data.equipe.map((e) => {
+                const roleLabel = e.role === 'gerant' ? 'Gérant' : e.role === 'cuisinier' ? 'Cuisinier' : 'Serveur'
+                return (
+                  <div key={e.id} className={`rounded-xl p-5 text-center ${theme.cardBg}`}>
+                    {e.photo_url ? (
+                      <img src={e.photo_url} alt={e.prenom} className="w-16 h-16 rounded-full object-cover mx-auto mb-3" />
+                    ) : (
+                      <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center text-xl font-bold text-gray-500 mx-auto mb-3">
+                        {e.prenom[0]}{e.nom[0]}
+                      </div>
+                    )}
+                    <p className={`font-semibold text-sm ${theme.heading}`}>{e.prenom} {e.nom}</p>
+                    <p className={`text-xs mt-1 ${theme.subtext}`}>{roleLabel}</p>
+                  </div>
+                )
+              })}
+            </div>
           </div>
         </section>
       )}
@@ -374,6 +406,9 @@ export default function LandingPage() {
         </section>
       )}
 
+      {/* ── FIDÉLITÉ ── */}
+      <FideliteSection theme={theme} couleur={couleur} />
+
       {/* ── FOOTER ── */}
       <footer className={`py-10 px-6 ${theme.heroBg}`}>
         <div className={`max-w-4xl mx-auto text-center ${theme.heroText}`}>
@@ -416,6 +451,12 @@ export default function LandingPage() {
               <textarea rows={3} value={candidatureForm.message} onChange={e => setCandidatureForm(f => ({ ...f, message: e.target.value }))}
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none resize-none" />
             </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">CV <span className="text-gray-400">(PDF, DOC — optionnel)</span></label>
+              <input type="file" accept=".pdf,.doc,.docx"
+                onChange={e => setCandidatureCv(e.target.files[0] || null)}
+                className="w-full text-sm text-gray-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-medium file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200" />
+            </div>
             <div className="flex gap-3 pt-1">
               <button type="button" onClick={() => setActiveOffre(null)} className="flex-1 border border-gray-200 rounded-lg py-2 text-sm text-gray-600">Annuler</button>
               <button type="submit" className="flex-1 bg-gray-900 text-white rounded-lg py-2 text-sm font-medium">Envoyer</button>
@@ -432,6 +473,89 @@ function NavLink({ href, label, theme }) {
     <a href={href} className={`text-sm font-medium opacity-80 hover:opacity-100 transition-opacity ${theme.navText}`}>
       {label}
     </a>
+  )
+}
+
+function FideliteSection({ theme, couleur }) {
+  const [form, setForm] = useState({ prenom: '', nom: '', telephone: '', email: '', accept_emails: false, date_naissance: '' })
+  const [envoye, setEnvoye] = useState(false)
+  const [erreur, setErreur] = useState(null)
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    setErreur(null)
+    try {
+      await inscrireClient(form)
+      setEnvoye(true)
+    } catch (err) {
+      setErreur(err.response?.data?.detail || "Erreur lors de l'inscription.")
+    }
+  }
+
+  return (
+    <section className={`py-20 px-6 ${theme.sectionAltBg}`}>
+      <div className="max-w-lg mx-auto">
+        <SectionTitle title="Programme Fidélité" theme={theme} couleur={couleur} />
+        <p className={`text-center text-sm mb-8 ${theme.subtext}`}>
+          Gagnez des récompenses, participez aux tombolas et recevez nos offres exclusives.
+        </p>
+        {envoye ? (
+          <div className="text-center py-8">
+            <p className="text-4xl mb-3">✓</p>
+            <p className={`font-semibold text-lg ${theme.heading}`}>Bienvenue !</p>
+            <p className={`text-sm mt-2 ${theme.subtext}`}>Vérifiez votre email pour activer votre compte.</p>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className={`rounded-2xl p-6 space-y-4 ${theme.cardBg}`}>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className={`block text-xs mb-1 ${theme.subtext}`}>Prénom *</label>
+                <input required value={form.prenom} onChange={e => setForm(f => ({ ...f, prenom: e.target.value }))}
+                  className={`w-full px-3 py-2 text-sm focus:outline-none ${theme.input}`} />
+              </div>
+              <div>
+                <label className={`block text-xs mb-1 ${theme.subtext}`}>Nom</label>
+                <input value={form.nom} onChange={e => setForm(f => ({ ...f, nom: e.target.value }))}
+                  className={`w-full px-3 py-2 text-sm focus:outline-none ${theme.input}`} />
+              </div>
+            </div>
+            <div>
+              <label className={`block text-xs mb-1 ${theme.subtext}`}>Téléphone *</label>
+              <input required value={form.telephone} onChange={e => setForm(f => ({ ...f, telephone: e.target.value }))}
+                placeholder="+212 6 00 00 00 00"
+                className={`w-full px-3 py-2 text-sm focus:outline-none ${theme.input}`} />
+            </div>
+            <div>
+              <label className={`block text-xs mb-1 ${theme.subtext}`}>Email</label>
+              <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                className={`w-full px-3 py-2 text-sm focus:outline-none ${theme.input}`} />
+            </div>
+            <div>
+              <label className={`block text-xs mb-1 ${theme.subtext}`}>Date de naissance <span className="opacity-60">(cadeau anniversaire)</span></label>
+              <input type="date" onChange={e => {
+                const mmdd = e.target.value ? e.target.value.slice(5) : ''
+                setForm(f => ({ ...f, date_naissance: mmdd }))
+              }}
+                className={`w-full px-3 py-2 text-sm focus:outline-none ${theme.input}`} />
+            </div>
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input type="checkbox" checked={form.accept_emails}
+                onChange={e => setForm(f => ({ ...f, accept_emails: e.target.checked }))}
+                className="mt-0.5 shrink-0" />
+              <span className={`text-xs ${theme.subtext}`}>
+                J'accepte de recevoir les offres et nouveautés par email.
+              </span>
+            </label>
+            {erreur && <p className="text-red-500 text-xs">{erreur}</p>}
+            <button type="submit"
+              className={`w-full py-3 rounded-xl font-medium text-sm transition-all ${theme.btnPrimary}`}
+              style={{ backgroundColor: couleur }}>
+              Rejoindre le programme
+            </button>
+          </form>
+        )}
+      </div>
+    </section>
   )
 }
 

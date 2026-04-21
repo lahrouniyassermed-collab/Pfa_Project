@@ -1,5 +1,83 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
+import { useEffect, useState, useRef } from 'react'
+import { getNotifs, marquerNotifLue, toutLireNotifs } from '../../services/api'
+
+function NotifBell() {
+  const [notifs, setNotifs] = useState([])
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+
+  async function load() {
+    try { const r = await getNotifs(); setNotifs(r.data) } catch { /* silent */ }
+  }
+
+  useEffect(() => {
+    load()
+    const id = setInterval(load, 15000)
+    return () => clearInterval(id)
+  }, [])
+
+  // Fermer en cliquant dehors
+  useEffect(() => {
+    function handler(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  async function lireTout() {
+    await toutLireNotifs()
+    setNotifs([])
+    setOpen(false)
+  }
+
+  const count = notifs.length
+
+  return (
+    <div ref={ref} className="relative px-3 mb-2">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${count > 0 ? 'text-amber-400 hover:bg-gray-800' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
+      >
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
+            d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+        </svg>
+        Notifications
+        {count > 0 && (
+          <span className="ml-auto bg-red-500 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center">
+            {count > 9 ? '9+' : count}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute left-full top-0 ml-2 w-80 bg-white rounded-xl shadow-2xl border border-gray-100 z-50">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+            <span className="font-semibold text-gray-900 text-sm">Notifications</span>
+            {count > 0 && (
+              <button onClick={lireTout} className="text-xs text-gray-400 hover:text-gray-600">Tout marquer lu</button>
+            )}
+          </div>
+          <div className="max-h-72 overflow-y-auto">
+            {notifs.length === 0 ? (
+              <p className="text-xs text-gray-400 text-center py-6">Aucune notification</p>
+            ) : notifs.map(n => (
+              <div key={n.id} className="flex items-start gap-3 px-4 py-3 border-b border-gray-50 hover:bg-gray-50">
+                <span className="text-lg mt-0.5">{n.type === 'annulation' ? '❌' : 'ℹ️'}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-gray-800 font-medium">{n.message}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{new Date(n.date_heure).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</p>
+                </div>
+                <button onClick={() => marquerNotifLue(n.id).then(load)} className="text-gray-300 hover:text-gray-500 text-xs">✕</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 const GERANT_NAV = [
   {
@@ -157,6 +235,9 @@ export default function Layout({ role }) {
             </NavLink>
           ))}
         </nav>
+
+        {/* Notifications (gérant seulement) */}
+        {role === 'gerant' && <NotifBell />}
 
         {/* User + Logout */}
         <div className="px-4 py-4 border-t border-gray-800">

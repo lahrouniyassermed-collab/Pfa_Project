@@ -13,6 +13,10 @@ from app.api.routes.tables_employes import router_tables, router_employes, route
 from app.api.routes.restaurant import router_restaurant, router_setup
 from app.api.routes.landing import router_landing, router_salles, router_emplois, router_avis_clients
 from app.api.routes.ingredients_categories import router_ingredients, router_categories
+from app.api.routes.clients import router_clients
+from app.api.routes.documents import router_documents
+from app.api.routes.qr_commande import router_qr
+from app.services.scheduler import demarrer_scheduler, arreter_scheduler
 
 # Créer toutes les tables au démarrage
 Base.metadata.create_all(bind=engine)
@@ -53,6 +57,18 @@ app.include_router(router_emplois)
 app.include_router(router_avis_clients)
 app.include_router(router_ingredients)
 app.include_router(router_categories)
+app.include_router(router_clients)
+app.include_router(router_documents)
+app.include_router(router_qr)
+
+# Démarrage / arrêt du scheduler automatique
+@app.on_event("startup")
+def startup():
+    demarrer_scheduler()
+
+@app.on_event("shutdown")
+def shutdown():
+    arreter_scheduler()
 
 @app.get("/")
 def root():

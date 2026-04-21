@@ -5,52 +5,10 @@ import {
   getOffres, creerOffre, modifierOffre, supprimerOffre,
   getCandidatures, marquerCandidatureLue,
   getAvisAdmin, validerAvisClient, rejeterAvisClient,
+  getEmployes, toggleLandingEmploye,
 } from '../services/api'
 
-// ── Définition des 3 thèmes ──────────────────────────────────
-const THEMES = [
-  {
-    id: 'elegant',
-    nom: 'Élégant',
-    description: 'Noir & blanc, style gastronomique',
-    preview: {
-      bg: 'bg-white',
-      header: 'bg-gray-900',
-      accent: 'bg-gray-900',
-      text: 'text-gray-900',
-      card: 'bg-gray-50 border-gray-200',
-      font: 'font-serif',
-    },
-  },
-  {
-    id: 'chaud',
-    nom: 'Chaleureux',
-    description: 'Crème & marron, ambiance orientale',
-    preview: {
-      bg: 'bg-amber-50',
-      header: 'bg-amber-800',
-      accent: 'bg-amber-600',
-      text: 'text-amber-900',
-      card: 'bg-amber-100 border-amber-200',
-      font: 'font-serif',
-    },
-  },
-  {
-    id: 'moderne',
-    nom: 'Moderne',
-    description: 'Violet & gris, design tendance',
-    preview: {
-      bg: 'bg-slate-900',
-      header: 'bg-violet-700',
-      accent: 'bg-violet-500',
-      text: 'text-white',
-      card: 'bg-slate-800 border-slate-700',
-      font: 'font-sans',
-    },
-  },
-]
-
-const TABS = ['Infos & Thème', 'Salles privées', 'Recrutement', 'Avis clients']
+const TABS = ['Informations', 'Équipe landing', 'Salles privées', 'Recrutement', 'Avis clients']
 
 export default function GerantSettings() {
   const [tab, setTab] = useState(0)
@@ -72,12 +30,16 @@ export default function GerantSettings() {
   // Avis
   const [avis, setAvis] = useState([])
 
+  // Équipe
+  const [employes, setEmployes] = useState([])
+
   useEffect(() => {
     getRestaurantInfo().then((r) => setInfo(r.data)).catch(() => {})
     getSalles().then((r) => setSalles(r.data))
     getOffres().then((r) => setOffres(r.data))
     getCandidatures().then((r) => setCandidatures(r.data))
     getAvisAdmin().then((r) => setAvis(r.data))
+    getEmployes().then((r) => setEmployes(r.data)).catch(() => {})
   }, [])
 
   async function handleSaveInfo(e) {
@@ -137,6 +99,13 @@ export default function GerantSettings() {
     setOffres((prev) => prev.filter((o) => o.id !== id))
   }
 
+  // Équipe landing
+  async function handleToggleLanding(id, actuel) {
+    await toggleLandingEmploye(id, !actuel)
+    const r = await getEmployes()
+    setEmployes(r.data)
+  }
+
   // Avis
   async function handleValiderAvis(id) {
     await validerAvisClient(id)
@@ -167,66 +136,9 @@ export default function GerantSettings() {
           ))}
         </div>
 
-        {/* ── TAB 0 : Infos & Thème ── */}
+        {/* ── TAB 0 : Informations ── */}
         {tab === 0 && (
           <form onSubmit={handleSaveInfo} className="space-y-8 max-w-3xl">
-
-            {/* Choix du thème */}
-            <div>
-              <h2 className="text-base font-semibold text-gray-800 mb-4">Thème de la landing page</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                {THEMES.map((theme) => (
-                  <div
-                    key={theme.id}
-                    onClick={() => setField('theme', theme.id)}
-                    className={`cursor-pointer rounded-xl border-2 overflow-hidden transition-all ${info.theme === theme.id ? 'border-gray-900 shadow-lg scale-[1.02]' : 'border-gray-200 hover:border-gray-400'}`}
-                  >
-                    {/* Miniature preview */}
-                    <div className={`h-28 ${theme.preview.bg} p-2 relative overflow-hidden`}>
-                      {/* Header mini */}
-                      <div className={`${theme.preview.header} rounded px-2 py-1 mb-1.5`}>
-                        <div className="flex gap-1">
-                          <div className="w-8 h-1.5 bg-white/60 rounded" />
-                          <div className="w-4 h-1.5 bg-white/40 rounded" />
-                        </div>
-                      </div>
-                      {/* Hero mini */}
-                      <div className="mb-1.5">
-                        <div className={`w-16 h-1.5 ${theme.preview.accent} rounded mb-1`} />
-                        <div className={`w-10 h-1 bg-current opacity-30 rounded ${theme.preview.text}`} />
-                      </div>
-                      {/* Cards mini */}
-                      <div className="flex gap-1">
-                        {[1,2,3].map(i => (
-                          <div key={i} className={`flex-1 h-6 rounded border ${theme.preview.card}`} />
-                        ))}
-                      </div>
-                    </div>
-                    {/* Label */}
-                    <div className={`p-3 bg-white ${info.theme === theme.id ? 'bg-gray-50' : ''}`}>
-                      <p className="font-semibold text-gray-900 text-sm">{theme.nom}</p>
-                      <p className="text-xs text-gray-400 mt-0.5">{theme.description}</p>
-                      {info.theme === theme.id && (
-                        <p className="text-xs text-green-600 font-medium mt-1">✓ Sélectionné</p>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Couleur principale */}
-            <div>
-              <h2 className="text-base font-semibold text-gray-800 mb-3">Couleur d'accentuation</h2>
-              <div className="flex items-center gap-4">
-                <input type="color" value={info.couleur_principale} onChange={(e) => setField('couleur_principale', e.target.value)}
-                  className="w-12 h-12 rounded-lg border border-gray-200 cursor-pointer p-1" />
-                <div>
-                  <p className="text-sm font-medium text-gray-700">{info.couleur_principale}</p>
-                  <p className="text-xs text-gray-400">Utilisée pour les boutons et accents</p>
-                </div>
-              </div>
-            </div>
 
             {/* Infos générales */}
             <div>
@@ -290,8 +202,42 @@ export default function GerantSettings() {
           </form>
         )}
 
-        {/* ── TAB 1 : Salles privées ── */}
+        {/* ── TAB 1 : Équipe landing ── */}
         {tab === 1 && (
+          <div className="max-w-2xl">
+            <p className="text-sm text-gray-500 mb-5">Choisissez quels employés apparaissent sur la page d'accueil du restaurant.</p>
+            <div className="space-y-3">
+              {employes.map((e) => {
+                const roleColor = e.role === 'gerant' ? 'bg-purple-100 text-purple-700' : e.role === 'cuisinier' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'
+                const roleLabel = e.role === 'gerant' ? 'Gérant' : e.role === 'cuisinier' ? 'Cuisinier' : 'Serveur'
+                return (
+                  <div key={e.id} className={`flex items-center justify-between bg-white border rounded-xl px-5 py-4 ${!e.actif ? 'opacity-40' : ''}`}>
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-sm font-bold text-gray-500">
+                        {e.prenom[0]}{e.nom[0]}
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">{e.prenom} {e.nom}</p>
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${roleColor}`}>{roleLabel}</span>
+                      </div>
+                    </div>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <span className="text-xs text-gray-500">{e.afficher_landing ? 'Visible' : 'Masqué'}</span>
+                      <div className={`w-10 h-5 rounded-full transition-colors ${e.afficher_landing ? 'bg-gray-900' : 'bg-gray-200'} relative`}
+                        onClick={() => handleToggleLanding(e.id, e.afficher_landing)}>
+                        <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${e.afficher_landing ? 'left-5' : 'left-0.5'}`} />
+                      </div>
+                    </label>
+                  </div>
+                )
+              })}
+              {employes.length === 0 && <p className="text-sm text-gray-400">Aucun employé.</p>}
+            </div>
+          </div>
+        )}
+
+        {/* ── TAB 2 : Salles privées ── */}
+        {tab === 2 && (
           <div className="max-w-3xl">
             <div className="flex items-center justify-between mb-5">
               <p className="text-sm text-gray-500">Gérez vos salles privatisables (affichées sur la landing page si activé).</p>
@@ -333,8 +279,8 @@ export default function GerantSettings() {
           </div>
         )}
 
-        {/* ── TAB 2 : Recrutement ── */}
-        {tab === 2 && (
+        {/* ── TAB 3 : Recrutement ── */}
+        {tab === 3 && (
           <div className="max-w-3xl">
             <div className="flex gap-8">
               {/* Offres */}
@@ -386,10 +332,17 @@ export default function GerantSettings() {
                     <div key={c.id} className={`border rounded-xl p-3 text-sm ${c.lue ? 'bg-white border-gray-200' : 'bg-blue-50 border-blue-200'}`}>
                       <p className="font-medium text-gray-900">{c.prenom} {c.nom}</p>
                       <p className="text-xs text-gray-400">{c.email}</p>
+                      {c.offre_titre && <p className="text-xs text-blue-600 mt-0.5">Poste : {c.offre_titre}</p>}
                       {c.message && <p className="text-xs text-gray-500 mt-1 line-clamp-2 italic">"{c.message}"</p>}
+                      {c.cv_url && (
+                        <a href={`http://localhost:8000${c.cv_url}`} target="_blank" rel="noreferrer"
+                          className="mt-1.5 inline-block text-xs text-green-600 hover:underline font-medium">
+                          Télécharger le CV
+                        </a>
+                      )}
                       {!c.lue && (
                         <button onClick={() => marquerCandidatureLue(c.id).then(() => getCandidatures().then(r => setCandidatures(r.data)))}
-                          className="mt-1.5 text-xs text-blue-600 hover:underline">Marquer lue</button>
+                          className="mt-1.5 block text-xs text-blue-600 hover:underline">Marquer lue</button>
                       )}
                     </div>
                   ))}
@@ -400,8 +353,8 @@ export default function GerantSettings() {
           </div>
         )}
 
-        {/* ── TAB 3 : Avis clients ── */}
-        {tab === 3 && (
+        {/* ── TAB 4 : Avis clients ── */}
+        {tab === 4 && (
           <div className="max-w-2xl space-y-3">
             <p className="text-sm text-gray-500 mb-4">Les avis négatifs (IA) sont automatiquement mis en attente.</p>
             {avis.map((a) => (
@@ -498,6 +451,6 @@ export default function GerantSettings() {
           </form>
         </div>
       )}
-    </GerantLayout>
+    </div>
   )
 }

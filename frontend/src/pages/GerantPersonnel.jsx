@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getEmployes, creerEmploye, toggleActifEmploye } from '../services/api'
+import { getEmployes, creerEmploye, toggleActifEmploye, modifierEmploye } from '../services/api'
 
 const ROLE_CONFIG = {
   gerant:    { label: 'Gérant',    color: 'bg-purple-100 text-purple-700' },
@@ -30,6 +30,7 @@ function Modal({ title, onClose, children }) {
 }
 
 const EMPTY = { nom: '', prenom: '', identifiant: '', code_passe: '', role: 'serveur', telephone: '' }
+const EMPTY_EDIT = { telephone: '', nouveau_mdp: '', confirmer_mdp: '' }
 
 export default function GerantPersonnel() {
   const [employes, setEmployes] = useState([])
@@ -38,6 +39,8 @@ export default function GerantPersonnel() {
   const [showModal, setShowModal] = useState(false)
   const [form, setForm] = useState(EMPTY)
   const [filterRole, setFilterRole] = useState('tous')
+  const [editTarget, setEditTarget] = useState(null)   // employé en cours d'édition
+  const [editForm, setEditForm] = useState(EMPTY_EDIT)
 
   const notify = (msg, type = 'success') => {
     setToast({ msg, type })
@@ -73,6 +76,25 @@ export default function GerantPersonnel() {
     } catch (e) { notify(e.response?.data?.detail || 'Erreur', 'error') }
   }
 
+  function openEdit(emp) {
+    setEditTarget(emp)
+    setEditForm({ telephone: emp.telephone || '', nouveau_mdp: '', confirmer_mdp: '' })
+  }
+
+  async function saveEdit() {
+    if (editForm.nouveau_mdp && editForm.nouveau_mdp !== editForm.confirmer_mdp) {
+      return notify('Les mots de passe ne correspondent pas', 'error')
+    }
+    try {
+      const payload = { telephone: editForm.telephone }
+      if (editForm.nouveau_mdp) payload.nouveau_mdp = editForm.nouveau_mdp
+      await modifierEmploye(editTarget.id, payload)
+      notify('Modifications enregistrées')
+      setEditTarget(null)
+      load()
+    } catch (e) { notify(e.response?.data?.detail || 'Erreur', 'error') }
+  }
+
   const filtered = filterRole === 'tous' ? employes : employes.filter(e => e.role === filterRole)
 
   if (loading) return <div className="flex items-center justify-center h-full"><div className="w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full animate-spin" /></div>
@@ -104,7 +126,7 @@ export default function GerantPersonnel() {
         <table className="w-full">
           <thead className="bg-gray-50 border-b border-gray-100">
             <tr>
-              {['Employé', 'Identifiant', 'Rôle', 'Téléphone', 'Date embauche', 'Actif'].map(h => (
+              {['Employé', 'Identifiant', 'Rôle', 'Téléphone', 'Date embauche', 'Actif', ''].map(h => (
                 <th key={h} className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide px-4 py-3">{h}</th>
               ))}
             </tr>
@@ -131,6 +153,12 @@ export default function GerantPersonnel() {
                       className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${e.actif ? 'bg-green-500' : 'bg-gray-200'}`}
                     >
                       <span className={`inline-block w-3.5 h-3.5 bg-white rounded-full shadow transition-transform ${e.actif ? 'translate-x-4' : 'translate-x-1'}`} />
+                    </button>
+                  </td>
+                  <td className="px-4 py-3">
+                    <button onClick={() => openEdit(e)}
+                      className="text-xs border border-gray-200 px-2.5 py-1 rounded-lg text-gray-600 hover:bg-gray-50">
+                      Modifier
                     </button>
                   </td>
                 </tr>
@@ -188,6 +216,39 @@ export default function GerantPersonnel() {
             <div className="flex gap-3 pt-2">
               <button onClick={create} className="flex-1 bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium py-2.5 rounded-lg transition-colors">Créer le compte</button>
               <button onClick={() => setShowModal(false)} className="flex-1 border border-gray-200 text-gray-700 text-sm py-2.5 rounded-lg hover:bg-gray-50 transition-colors">Annuler</button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Modal modifier employé */}
+      {editTarget && (
+        <Modal title={`Modifier — ${editTarget.prenom} ${editTarget.nom}`} onClose={() => setEditTarget(null)}>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm text-gray-600 mb-1">Téléphone</label>
+              <input value={editForm.telephone} onChange={e => setEditForm({ ...editForm, telephone: e.target.value })}
+                placeholder="+212 6 00 00 00 00"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400" />
+            </div>
+            <div>
+              <label className="block text-sm text-gray-600 mb-1">Nouveau mot de passe <span className="text-gray-400">(laisser vide pour ne pas changer)</span></label>
+              <input type="password" value={editForm.nouveau_mdp} onChange={e => setEditForm({ ...editForm, nouveau_mdp: e.target.value })}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400" />
+            </div>
+            {editForm.nouveau_mdp && (
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">Confirmer le mot de passe</label>
+                <input type="password" value={editForm.confirmer_mdp} onChange={e => setEditForm({ ...editForm, confirmer_mdp: e.target.value })}
+                  className={`w-full border rounded-lg px-3 py-2.5 text-sm focus:outline-none ${editForm.nouveau_mdp !== editForm.confirmer_mdp && editForm.confirmer_mdp ? 'border-red-300 focus:ring-2 focus:ring-red-300' : 'border-gray-200 focus:ring-2 focus:ring-amber-400'}`} />
+                {editForm.nouveau_mdp !== editForm.confirmer_mdp && editForm.confirmer_mdp && (
+                  <p className="text-xs text-red-500 mt-1">Les mots de passe ne correspondent pas</p>
+                )}
+              </div>
+            )}
+            <div className="flex gap-3 pt-2">
+              <button onClick={saveEdit} className="flex-1 bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium py-2.5 rounded-lg transition-colors">Enregistrer</button>
+              <button onClick={() => setEditTarget(null)} className="flex-1 border border-gray-200 text-gray-700 text-sm py-2.5 rounded-lg hover:bg-gray-50 transition-colors">Annuler</button>
             </div>
           </div>
         </Modal>

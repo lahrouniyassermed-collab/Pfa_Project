@@ -24,6 +24,7 @@ class StatutCommandeEnum(str, enum.Enum):
     en_preparation = "en_preparation"
     prete = "prete"
     cloturee = "cloturee"
+    annulee = "annulee"
 
 class OrigineCommandeEnum(str, enum.Enum):
     serveur = "serveur"
@@ -87,7 +88,10 @@ class Employe(Base):
     date_embauche = Column(DateTime, server_default=func.now())
     actif = Column(Boolean, default=True)
 
-    commandes = relationship("Commande", back_populates="employe")
+    afficher_landing = Column(Boolean, default=False)   # apparaît sur la landing page
+    photo_url = Column(String(500), default="")          # photo profil (optionnel)
+
+    commandes = relationship("Commande", back_populates="employe", foreign_keys="Commande.employe_id")
     plats_proposes = relationship("Plat", back_populates="propose_par")
 
 
@@ -171,10 +175,12 @@ class Commande(Base):
     statut = Column(Enum(StatutCommandeEnum), default=StatutCommandeEnum.en_cours)
     montant_total = Column(Float, default=0)
 
-    employe_id = Column(Integer, ForeignKey("employes.id"), nullable=True)
-    table_id = Column(Integer, ForeignKey("tables.id"), nullable=True)
+    employe_id    = Column(Integer, ForeignKey("employes.id"), nullable=True)
+    table_id      = Column(Integer, ForeignKey("tables.id"), nullable=True)
+    cuisinier_id  = Column(Integer, ForeignKey("employes.id"), nullable=True)  # cuisinier assigné
 
-    employe = relationship("Employe", back_populates="commandes")
+    employe = relationship("Employe", back_populates="commandes", foreign_keys="Commande.employe_id")
+    cuisinier = relationship("Employe", foreign_keys="Commande.cuisinier_id")
     table = relationship("Table", back_populates="commandes")
     lignes = relationship("LigneCommande", back_populates="commande")
     paiement = relationship("Paiement", back_populates="commande", uselist=False)
@@ -332,10 +338,61 @@ class Candidature(Base):
     telephone = Column(String(30), default="")
     message = Column(Text, default="")
     date_depot = Column(DateTime, server_default=func.now())
+    cv_url = Column(String(500), default="")      # chemin vers le fichier CV
     lue = Column(Boolean, default=False)
 
     offre_id = Column(Integer, ForeignKey("offres_emploi.id"))
     offre = relationship("OffreEmploi", back_populates="candidatures")
+
+
+class ClientFidelite(Base):
+    __tablename__ = "clients_fidelite"
+
+    id             = Column(Integer, primary_key=True, index=True)
+    prenom         = Column(String(100), nullable=False)
+    nom            = Column(String(100), default="")
+    telephone      = Column(String(20), unique=True, nullable=False, index=True)
+    email          = Column(String(200), unique=True, nullable=True, index=True)
+    email_confirme = Column(Boolean, default=False)
+    accept_emails  = Column(Boolean, default=False)   # consentement marketing
+    date_naissance = Column(String(10), default="")   # format MM-DD pour l'anniversaire
+    nb_visites     = Column(Integer, default=0)
+    montant_total  = Column(Float, default=0)
+    derniere_visite= Column(DateTime, nullable=True)
+    date_inscription = Column(DateTime, server_default=func.now())
+    qr_token       = Column(String(100), unique=True, index=True)  # token du QR perso
+
+
+class TokenConfirmationEmail(Base):
+    __tablename__ = "tokens_confirmation_email"
+
+    id         = Column(Integer, primary_key=True)
+    token      = Column(String(100), unique=True, nullable=False, index=True)
+    client_id  = Column(Integer, ForeignKey("clients_fidelite.id"))
+    expire_at  = Column(DateTime, nullable=False)
+    utilise    = Column(Boolean, default=False)
+
+
+class Document(Base):
+    __tablename__ = "documents"
+
+    id            = Column(Integer, primary_key=True, index=True)
+    nom_original  = Column(String(300), nullable=False)   # nom fourni par l'utilisateur
+    nom_stockage  = Column(String(300), nullable=False)   # UUID + .pdf
+    chemin        = Column(String(500), nullable=False)   # chemin absolu sur le disque
+    taille_octets = Column(Integer, nullable=False)
+    uploade_par   = Column(Integer, ForeignKey("employes.id"), nullable=True)
+    date_upload   = Column(DateTime, server_default=func.now())
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    message    = Column(String(500), nullable=False)
+    type       = Column(String(50), default="info")   # info | alerte | annulation
+    lu         = Column(Boolean, default=False)
+    date_heure = Column(DateTime, server_default=func.now())
 
 
 class AvisClient(Base):

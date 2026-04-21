@@ -5,6 +5,7 @@ import Layout from './components/shared/Layout'
 import LoginPage from './pages/LoginPage'
 import SetupPage from './pages/SetupPage'
 import LandingPage from './pages/LandingPage'
+import CommandeQR from './pages/CommandeQR'
 
 // Gérant
 import GerantDashboard from './pages/GerantDashboard'
@@ -33,6 +34,7 @@ function App() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/setup" element={<SetupPage />} />
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/commande" element={<CommandeQR />} />
 
           {/* Gérant */}
           <Route

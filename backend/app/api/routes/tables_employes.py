@@ -76,10 +76,12 @@ class EmployeCreate(BaseModel):
     role: str
     telephone: Optional[str] = None
 
-@router_employes.get("/")
-def liste_employes(db: Session = Depends(get_db), _=Depends(require_role("gerant"))):
-    employes = db.query(Employe).order_by(Employe.nom).all()
-    return [{
+class EmployeUpdate(BaseModel):
+    telephone: Optional[str] = None
+    nouveau_mdp: Optional[str] = None
+
+def _employe_dict(e):
+    return {
         "id": e.id,
         "nom": e.nom,
         "prenom": e.prenom,
@@ -87,8 +89,14 @@ def liste_employes(db: Session = Depends(get_db), _=Depends(require_role("gerant
         "role": e.role.value,
         "telephone": e.telephone,
         "actif": e.actif,
+        "afficher_landing": e.afficher_landing,
+        "photo_url": e.photo_url or "",
         "date_embauche": e.date_embauche.isoformat() if e.date_embauche else None,
-    } for e in employes]
+    }
+
+@router_employes.get("/")
+def liste_employes(db: Session = Depends(get_db), _=Depends(require_role("gerant"))):
+    return [_employe_dict(e) for e in db.query(Employe).order_by(Employe.nom).all()]
 
 @router_employes.post("/")
 def creer_employe(data: EmployeCreate, db: Session = Depends(get_db), _=Depends(require_role("gerant"))):
@@ -107,6 +115,18 @@ def creer_employe(data: EmployeCreate, db: Session = Depends(get_db), _=Depends(
     db.refresh(emp)
     return {"message": f"Compte {data.identifiant} créé", "id": emp.id}
 
+@router_employes.put("/{emp_id}")
+def modifier_employe(emp_id: int, data: EmployeUpdate, db: Session = Depends(get_db), _=Depends(require_role("gerant"))):
+    emp = db.query(Employe).filter(Employe.id == emp_id).first()
+    if not emp:
+        raise HTTPException(404, "Employé introuvable")
+    if data.telephone is not None:
+        emp.telephone = data.telephone
+    if data.nouveau_mdp:
+        emp.code_passe = hash_password(data.nouveau_mdp)
+    db.commit()
+    return _employe_dict(emp)
+
 @router_employes.put("/{emp_id}/actif")
 def toggle_actif(emp_id: int, actif: bool, db: Session = Depends(get_db), _=Depends(require_role("gerant"))):
     emp = db.query(Employe).filter(Employe.id == emp_id).first()
@@ -115,6 +135,15 @@ def toggle_actif(emp_id: int, actif: bool, db: Session = Depends(get_db), _=Depe
     emp.actif = actif
     db.commit()
     return {"message": f"Compte {'activé' if actif else 'désactivé'}"}
+
+@router_employes.put("/{emp_id}/landing")
+def toggle_landing(emp_id: int, afficher: bool, db: Session = Depends(get_db), _=Depends(require_role("gerant"))):
+    emp = db.query(Employe).filter(Employe.id == emp_id).first()
+    if not emp:
+        raise HTTPException(404, "Employé introuvable")
+    emp.afficher_landing = afficher
+    db.commit()
+    return {"message": "Mis à jour"}
 
 # ══════════════════════════════════════════════════════════
 # DASHBOARD GÉRANT
