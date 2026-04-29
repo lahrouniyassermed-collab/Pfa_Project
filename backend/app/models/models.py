@@ -71,6 +71,16 @@ class SentimentEnum(str, enum.Enum):
     neutre = "neutre"
     negatif = "negatif"
 
+class TypePrixEnum(str, enum.Enum):
+    reduction = "reduction"
+    gratuit = "gratuit"
+    points = "points"
+    rejouer = "rejouer"
+
+class StatutGainEnum(str, enum.Enum):
+    utilise = "utilise"
+    non_utilise = "non_utilise"
+
 # ============================================================
 # MODÈLES
 # ============================================================
@@ -175,9 +185,10 @@ class Commande(Base):
     statut = Column(Enum(StatutCommandeEnum), default=StatutCommandeEnum.en_cours)
     montant_total = Column(Float, default=0)
 
-    employe_id    = Column(Integer, ForeignKey("employes.id"), nullable=True)
-    table_id      = Column(Integer, ForeignKey("tables.id"), nullable=True)
-    cuisinier_id  = Column(Integer, ForeignKey("employes.id"), nullable=True)  # cuisinier assigné
+    employe_id         = Column(Integer, ForeignKey("employes.id"), nullable=True)
+    table_id           = Column(Integer, ForeignKey("tables.id"), nullable=True)
+    cuisinier_id       = Column(Integer, ForeignKey("employes.id"), nullable=True)
+    client_fidelite_id = Column(Integer, ForeignKey("clients_fidelite.id"), nullable=True)
 
     employe = relationship("Employe", back_populates="commandes", foreign_keys="Commande.employe_id")
     cuisinier = relationship("Employe", foreign_keys="Commande.cuisinier_id")
@@ -351,16 +362,75 @@ class ClientFidelite(Base):
     id             = Column(Integer, primary_key=True, index=True)
     prenom         = Column(String(100), nullable=False)
     nom            = Column(String(100), default="")
-    telephone      = Column(String(20), unique=True, nullable=False, index=True)
-    email          = Column(String(200), unique=True, nullable=True, index=True)
+    email          = Column(String(200), unique=True, nullable=False, index=True)
+    mot_de_passe   = Column(String(255), nullable=False)
+    telephone      = Column(String(20), nullable=True, index=True)
+    
+    points_solde   = Column(Integer, default=0)
+    date_inscription = Column(DateTime, server_default=func.now())
+    derniere_activite = Column(DateTime, server_default=func.now())
+    
+    spin_count_mois = Column(Integer, default=0)
+    derniere_date_spin = Column(DateTime, nullable=True)
+    
+    avis_google_mois = Column(Boolean, default=False)
+    derniere_date_avis = Column(DateTime, nullable=True)
+    avis_screenshot = Column(String(500), nullable=True)
+    avis_score_ia = Column(Float, nullable=True)
+    avis_sentiment = Column(String(20), nullable=True)
+    avis_statut = Column(Enum(StatutAvisEnum), nullable=True)
+
+    # Champs hérités de l'ancienne version pour compatibilité si besoin
     email_confirme = Column(Boolean, default=False)
-    accept_emails  = Column(Boolean, default=False)   # consentement marketing
-    date_naissance = Column(String(10), default="")   # format MM-DD pour l'anniversaire
+    accept_emails  = Column(Boolean, default=False)
+    date_naissance = Column(String(10), default="")
     nb_visites     = Column(Integer, default=0)
     montant_total  = Column(Float, default=0)
-    derniere_visite= Column(DateTime, nullable=True)
-    date_inscription = Column(DateTime, server_default=func.now())
-    qr_token       = Column(String(100), unique=True, index=True)  # token du QR perso
+    qr_token       = Column(String(100), unique=True, index=True)
+
+    gains = relationship("GainSpin", back_populates="client")
+
+
+class PrixRoue(Base):
+    __tablename__ = "prix_roue"
+
+    id = Column(Integer, primary_key=True, index=True)
+    nom = Column(String(200), nullable=False)
+    description = Column(Text)
+    validite_jours = Column(Integer, default=30)
+    type = Column(Enum(TypePrixEnum), nullable=False)
+    valeur = Column(Float, default=0)
+    actif = Column(Boolean, default=True)
+
+    gains = relationship("GainSpin", back_populates="prix")
+
+
+class GainSpin(Base):
+    __tablename__ = "gains_spin"
+
+    id = Column(Integer, primary_key=True, index=True)
+    client_id = Column(Integer, ForeignKey("clients_fidelite.id"))
+    prix_id = Column(Integer, ForeignKey("prix_roue.id"))
+    
+    date_gain = Column(DateTime, server_default=func.now())
+    statut = Column(Enum(StatutGainEnum), default=StatutGainEnum.non_utilise)
+    points_avant = Column(Integer)
+    points_apres = Column(Integer)
+    nb_gains_ce_prix = Column(Integer, default=1) # combien de fois ce client a eu CE prix
+
+    client = relationship("ClientFidelite", back_populates="gains")
+    prix = relationship("PrixRoue", back_populates="gains")
+
+
+class ConfigFidelite(Base):
+    __tablename__ = "config_fidelite"
+
+    id = Column(Integer, primary_key=True, index=True)
+    seuil_minimum_mad = Column(Float, default=80)
+    points_par_tranche = Column(Integer, default=5)
+    tranche_mad = Column(Integer, default=20)
+    cout_spin_points = Column(Integer, default=100)
+    points_avis_google = Column(Integer, default=50)
 
 
 class TokenConfirmationEmail(Base):

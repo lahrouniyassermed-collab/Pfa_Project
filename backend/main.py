@@ -4,6 +4,7 @@ from fastapi.staticfiles import StaticFiles
 import os
 
 from app.core.database import engine, Base
+from sqlalchemy import text
 from app.api.routes.auth import router as auth_router
 from app.api.routes.plats import router as plats_router
 from app.api.routes.commandes import router as commandes_router
@@ -16,7 +17,10 @@ from app.api.routes.ingredients_categories import router_ingredients, router_cat
 from app.api.routes.clients import router_clients
 from app.api.routes.documents import router_documents
 from app.api.routes.qr_commande import router_qr
+from app.api.routes.client_fidelite import router as client_fidelite_router
+from app.api.routes.gerant_fidelite import router as gerant_fidelite_router
 from app.services.scheduler import demarrer_scheduler, arreter_scheduler
+
 
 # Créer toutes les tables au démarrage
 Base.metadata.create_all(bind=engine)
@@ -60,11 +64,23 @@ app.include_router(router_categories)
 app.include_router(router_clients)
 app.include_router(router_documents)
 app.include_router(router_qr)
+app.include_router(client_fidelite_router)
+app.include_router(gerant_fidelite_router)
 
 # Démarrage / arrêt du scheduler automatique
 @app.on_event("startup")
 def startup():
     demarrer_scheduler()
+    # Migration : colonne client_fidelite_id sur commandes (idempotent)
+    with engine.connect() as conn:
+        try:
+            conn.execute(text(
+                "ALTER TABLE commandes ADD COLUMN client_fidelite_id INTEGER "
+                "REFERENCES clients_fidelite(id)"
+            ))
+            conn.commit()
+        except Exception:
+            pass  # colonne déjà présente
 
 @app.on_event("shutdown")
 def shutdown():

@@ -18,8 +18,8 @@ import uuid
 
 from app.core.database import get_db
 from app.core.config import settings
-from app.core.security import require_role
-from app.models.models import ClientFidelite, TokenConfirmationEmail, RestaurantInfo
+from app.core.security import require_role, hash_password
+from app.models.models import ClientFidelite, TokenConfirmationEmail, RestaurantInfo, Commande, ConfigFidelite
 from app.services.email_service import (
     envoyer_confirmation_email,
     envoyer_email_nouveau_plat,
@@ -35,9 +35,11 @@ class ClientInscription(BaseModel):
     prenom: str
     nom: str = ""
     telephone: str
-    email: Optional[str] = None
+    email: str
+    mot_de_passe: str
     accept_emails: bool = False
     date_naissance: str = ""    # format MM-DD  ex: "03-15" = 15 mars
+    commande_id: Optional[int] = None
 
 
 class NotifPlatSchema(BaseModel):
@@ -56,6 +58,23 @@ def _get_nom_resto(db: Session) -> str:
     return info.nom if info else settings.RESTAURANT_NAME
 
 
+def _crediter_points(db: Session, client: ClientFidelite, montant: float) -> int:
+    """Calcule et crédite les points fidélité selon ConfigFidelite. Retourne les points gagnés."""
+    config = db.query(ConfigFidelite).first()
+    seuil  = config.seuil_minimum_mad if config else 80
+    tranche = config.tranche_mad if config else 20
+
+    if montant < seuil:
+        return 0
+
+    points = int(montant / tranche)
+    client.points_solde    = (client.points_solde or 0) + points
+    client.nb_visites      = (client.nb_visites or 0) + 1
+    client.montant_total   = (client.montant_total or 0) + montant
+    client.derniere_activite = datetime.now()
+    return points
+
+
 # ── Routes publiques ─────────────────────────────────────────────────────
 
 @router_clients.post("/inscrire")
@@ -63,17 +82,17 @@ def inscrire_client(data: ClientInscription, db: Session = Depends(get_db)):
     # Vérifier doublons
     if db.query(ClientFidelite).filter(ClientFidelite.telephone == data.telephone).first():
         raise HTTPException(400, "Ce numéro de téléphone est déjà inscrit.")
-    if data.email:
-        if db.query(ClientFidelite).filter(ClientFidelite.email == data.email).first():
-            raise HTTPException(400, "Cet email est déjà utilisé.")
+    if db.query(ClientFidelite).filter(ClientFidelite.email == data.email).first():
+        raise HTTPException(400, "Cet email est déjà utilisé.")
 
-    qr_token = uuid.uuid4().hex + uuid.uuid4().hex   # token unique pour le QR
+    qr_token = uuid.uuid4().hex + uuid.uuid4().hex
 
     client = ClientFidelite(
         prenom=data.prenom,
         nom=data.nom,
         telephone=data.telephone,
-        email=data.email if data.email else None,
+        email=data.email,
+        mot_de_passe=hash_password(data.mot_de_passe),
         accept_emails=data.accept_emails,
         date_naissance=data.date_naissance,
         qr_token=qr_token,
@@ -82,6 +101,18 @@ def inscrire_client(data: ClientInscription, db: Session = Depends(get_db)):
     db.add(client)
     db.commit()
     db.refresh(client)
+
+    # Lier la commande et créditer les points si commande_id fourni
+    points_gagnes = 0
+    if data.commande_id:
+        commande = db.query(Commande).filter(
+            Commande.id == data.commande_id,
+            Commande.client_fidelite_id == None,
+        ).first()
+        if commande:
+            commande.client_fidelite_id = client.id
+            points_gagnes = _crediter_points(db, client, commande.montant_total or 0)
+            db.commit()
 
     # Envoyer email de confirmation si email fourni
     if data.email and data.accept_emails:
@@ -101,6 +132,8 @@ def inscrire_client(data: ClientInscription, db: Session = Depends(get_db)):
         "message": "Compte créé avec succès.",
         "qr_token": qr_token,
         "email_confirmation_envoye": bool(data.email and data.accept_emails),
+        "points_gagnes": points_gagnes,
+        "points_solde": client.points_solde,
     }
 
 

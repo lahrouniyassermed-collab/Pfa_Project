@@ -16,8 +16,10 @@ from app.core.database import get_db
 from app.core.config import settings
 from app.models.models import (
     Table, Commande, LigneCommande, Plat, Paiement, Categorie,
-    StatutCommandeEnum, OrigineCommandeEnum, ModePaiementEnum, StatutPaiementEnum
+    StatutCommandeEnum, OrigineCommandeEnum, ModePaiementEnum, StatutPaiementEnum,
+    ClientFidelite,
 )
+from app.api.routes.clients import _crediter_points
 import random, string, stripe
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
@@ -41,6 +43,7 @@ class LigneQR(BaseModel):
 class CommandeQRCreate(BaseModel):
     table_id: int
     lignes: List[LigneQR]
+    client_fidelite_id: Optional[int] = None
 
 class ConfirmerPaiement(BaseModel):
     payment_intent_id: str
@@ -85,6 +88,7 @@ def info_table(table_id: int, db: Session = Depends(get_db)):
         },
         "menu": menu,
         "stripe_publishable_key": settings.STRIPE_PUBLISHABLE_KEY,
+        "nom_restaurant": settings.RESTAURANT_NAME,
     }
 
 
@@ -101,6 +105,7 @@ def creer_commande_qr(data: CommandeQRCreate, db: Session = Depends(get_db)):
         table_id=data.table_id,
         origine=OrigineCommandeEnum.qr_table,
         statut=StatutCommandeEnum.en_cours,
+        client_fidelite_id=data.client_fidelite_id,
     )
     db.add(commande)
     db.flush()
@@ -198,6 +203,16 @@ def confirmer_paiement(
     )
     db.add(paiement)
     commande.statut = StatutCommandeEnum.envoyee
+    if commande.table:
+        commande.table.statut = "occupee"
+
+    # Créditer les points si un client fidélité est déjà lié
+    points_gagnes = 0
+    if commande.client_fidelite_id:
+        client = db.query(ClientFidelite).filter(ClientFidelite.id == commande.client_fidelite_id).first()
+        if client:
+            points_gagnes = _crediter_points(db, client, commande.montant_total or 0)
+
     db.commit()
 
     return {
@@ -206,6 +221,7 @@ def confirmer_paiement(
         "montant": commande.montant_total,
         "reference": data.payment_intent_id,
         "peut_participer_tombola": commande.montant_total >= 200,
+        "points_gagnes": points_gagnes,
     }
 
 
@@ -227,6 +243,16 @@ def payer_especes(commande_id: int, db: Session = Depends(get_db)):
     )
     db.add(paiement)
     commande.statut = StatutCommandeEnum.envoyee
+    if commande.table:
+        commande.table.statut = "occupee"
+
+    # Créditer les points si un client fidélité est déjà lié
+    points_gagnes = 0
+    if commande.client_fidelite_id:
+        client = db.query(ClientFidelite).filter(ClientFidelite.id == commande.client_fidelite_id).first()
+        if client:
+            points_gagnes = _crediter_points(db, client, commande.montant_total or 0)
+
     db.commit()
 
     return {
@@ -234,6 +260,7 @@ def payer_especes(commande_id: int, db: Session = Depends(get_db)):
         "code_unique": commande.code_unique,
         "montant": commande.montant_total,
         "peut_participer_tombola": commande.montant_total >= 200,
+        "points_gagnes": points_gagnes,
     }
 
 

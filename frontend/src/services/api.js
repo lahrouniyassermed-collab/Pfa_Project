@@ -15,9 +15,13 @@ api.interceptors.response.use(
   (res) => res,
   (err) => {
     if (err.response?.status === 401) {
+      const user = JSON.parse(localStorage.getItem('user') || '{}')
+      const isClient = user.role === 'client' || window.location.pathname.startsWith('/client')
+      
       localStorage.removeItem('token')
       localStorage.removeItem('user')
-      window.location.href = '/login'
+      
+      window.location.href = isClient ? '/client/login' : '/login'
     }
     return Promise.reject(err)
   }
@@ -150,5 +154,25 @@ export const statutCommandeQR      = (commandeId)  => api.get(`/api/qr/commande/
 
 // ── CLIENTS FIDÉLITÉ (public) ─────────────────────────────────────────────
 export const inscrireClient    = (data) => api.post('/api/clients/inscrire', data)
+
+// ── NOUVELLE FIDÉLITÉ (SKY07) ──────────────────────────────────────────────
+export const clientRegister     = (data)    => api.post('/api/client/register', data)
+export const clientLogin        = (data)    => api.post('/api/client/login', data)
+export const getClientDashboard = ()        => api.get('/api/client/dashboard')
+export const spinWheel          = ()        => api.post('/api/client/spin')
+export const claimGoogleBonus   = (file)    => {
+  const form = new FormData()
+  form.append('file', file)
+  return api.post('/api/client/avis-google', form, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  })
+}
+export const getClientSpins     = ()        => api.get('/api/client/historique-spins')
+
+// ── FIDÉLITÉ GÉRANT (SKY07) ────────────────────────────────────────────────
+export const getGerantClients   = ()        => api.get('/api/gerant/clients')
+export const getGerantSpins     = ()        => api.get('/api/gerant/spins')
+export const getFideliteConfig  = ()        => api.get('/api/gerant/config-fidelite')
+export const updateFideliteConfig = (data)  => api.put('/api/gerant/config-fidelite', data)
 
 export default api

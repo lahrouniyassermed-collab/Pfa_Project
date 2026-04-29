@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
-import { getTombolas, creerTombola, getParticipations, validerAvis, rejeterAvis, tirageAuSort } from '../services/api'
+import { getTombolas, creerTombola, getParticipations, validerAvis, rejeterAvis, tirageAuSort, getGerantSpins } from '../services/api'
 
 const STATUT_CONFIG = {
   en_attente: { label: 'En attente', color: 'bg-amber-100 text-amber-700' },
   valide:     { label: 'Validée',    color: 'bg-green-100 text-green-700' },
   rejete:     { label: 'Rejetée',   color: 'bg-red-100 text-red-700' },
+  utilise:    { label: 'Utilisé',    color: 'bg-gray-100 text-gray-500' },
+  non_utilise: { label: 'Disponible', color: 'bg-[#e8824a]/20 text-[#e8824a]' },
 }
 
 const SENTIMENT_EMOJI = { positif: '😊', neutre: '😐', negatif: '😞' }
@@ -19,7 +21,7 @@ function Toast({ msg, type }) {
 
 function Modal({ title, onClose, children }) {
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-40 p-4">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
         <div className="flex items-center justify-between p-6 border-b border-gray-100">
           <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
@@ -32,6 +34,7 @@ function Modal({ title, onClose, children }) {
 }
 
 export default function GerantTombola() {
+  const [activeTab, setActiveTab] = useState('tombola') // 'tombola' | 'spins'
   const [tombolas, setTombolas] = useState([])
   const [selected, setSelected] = useState(null)
   const [participations, setParticipations] = useState([])
@@ -41,6 +44,10 @@ export default function GerantTombola() {
   const [showCreate, setShowCreate] = useState(false)
   const [gagnant, setGagnant] = useState(null)
   const [filterStatut, setFilterStatut] = useState('tous')
+
+  // Spin history state
+  const [spins, setSpins] = useState([])
+  const [loadingSpins, setLoadingSpins] = useState(false)
 
   const [form, setForm] = useState({
     titre: '', lot: '',
@@ -66,7 +73,23 @@ export default function GerantTombola() {
     finally { setLoadingP(false) }
   }
 
-  useEffect(() => { loadTombolas() }, [])
+  async function loadSpins() {
+    setLoadingSpins(true)
+    try {
+      const r = await getGerantSpins()
+      setSpins(r.data)
+    } catch {
+      notify('Erreur chargement historique spins', 'error')
+    } finally {
+      setLoadingSpins(false)
+    }
+  }
+
+  useEffect(() => { 
+    if (activeTab === 'tombola') loadTombolas()
+    else loadSpins()
+  }, [activeTab])
+
   useEffect(() => { if (selected) loadParticipations(selected.id) }, [selected])
 
   async function creer() {
@@ -99,143 +122,212 @@ export default function GerantTombola() {
 
   const filtered = filterStatut === 'tous' ? participations : participations.filter(p => p.statut === filterStatut)
 
-  if (loading) return <div className="flex items-center justify-center h-full"><div className="w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full animate-spin" /></div>
+  if (loading && activeTab === 'tombola') return <div className="flex items-center justify-center h-full"><div className="w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full animate-spin" /></div>
 
   return (
     <div className="p-8">
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">Tombola</h2>
-        <button onClick={() => setShowCreate(true)} className="bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
-          + Nouvelle tombola
-        </button>
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Tombola & Fidélité</h2>
+          <div className="flex gap-4 mt-2">
+            <button 
+              onClick={() => setActiveTab('tombola')}
+              className={`text-sm font-bold pb-2 border-b-2 transition-all ${activeTab === 'tombola' ? 'border-amber-500 text-amber-600' : 'border-transparent text-gray-400 hover:text-gray-600'}`}
+            >
+              Tombolas publiques
+            </button>
+            <button 
+              onClick={() => setActiveTab('spins')}
+              className={`text-sm font-bold pb-2 border-b-2 transition-all ${activeTab === 'spins' ? 'border-amber-500 text-amber-600' : 'border-transparent text-gray-400 hover:text-gray-600'}`}
+            >
+              Historique des spins
+            </button>
+          </div>
+        </div>
+        {activeTab === 'tombola' && (
+          <button onClick={() => setShowCreate(true)} className="bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+            + Nouvelle tombola
+          </button>
+        )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Tombola list */}
-        <div className="space-y-3">
-          <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Tombolas</h3>
-          {tombolas.length === 0 && (
-            <div className="bg-white rounded-xl border border-gray-100 p-8 text-center text-gray-400 text-sm shadow-sm">
-              Aucune tombola
-            </div>
-          )}
-          {tombolas.map(t => (
-            <div
-              key={t.id}
-              onClick={() => setSelected(selected?.id === t.id ? null : t)}
-              className={`bg-white rounded-xl border-2 p-4 cursor-pointer transition-all hover:shadow-sm ${selected?.id === t.id ? 'border-amber-400 shadow-sm' : 'border-gray-100'}`}
-            >
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="font-semibold text-gray-900 text-sm">{t.titre}</p>
-                  <p className="text-xs text-amber-600 mt-0.5">🎁 {t.lot}</p>
+      {activeTab === 'tombola' ? (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Tombola list */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Tombolas</h3>
+            {tombolas.length === 0 && (
+              <div className="bg-white rounded-xl border border-gray-100 p-8 text-center text-gray-400 text-sm shadow-sm">
+                Aucune tombola
+              </div>
+            )}
+            {tombolas.map(t => (
+              <div
+                key={t.id}
+                onClick={() => setSelected(selected?.id === t.id ? null : t)}
+                className={`bg-white rounded-xl border-2 p-4 cursor-pointer transition-all hover:shadow-sm ${selected?.id === t.id ? 'border-amber-400 shadow-sm' : 'border-gray-100'}`}
+              >
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="font-semibold text-gray-900 text-sm">{t.titre}</p>
+                    <p className="text-xs text-amber-600 mt-0.5">🎁 {t.lot}</p>
+                  </div>
+                  <span className={`text-xs px-2 py-1 rounded-full font-medium ${t.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                    {t.active ? 'Active' : 'Inactive'}
+                  </span>
                 </div>
-                <span className={`text-xs px-2 py-1 rounded-full font-medium ${t.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                  {t.active ? 'Active' : 'Inactive'}
-                </span>
+                <div className="flex gap-3 mt-3 text-xs text-gray-500">
+                  <span>{t.nb_participations} participations</span>
+                  <span className="text-green-600">{t.nb_valides} validées</span>
+                </div>
               </div>
-              <div className="flex gap-3 mt-3 text-xs text-gray-500">
-                <span>{t.nb_participations} participations</span>
-                <span className="text-green-600">{t.nb_valides} validées</span>
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
 
-        {/* Participations */}
-        <div className="lg:col-span-2">
-          {!selected ? (
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-12 text-center text-gray-400 text-sm">
-              Sélectionnez une tombola pour voir les participations
+          {/* Participations */}
+          <div className="lg:col-span-2">
+            {!selected ? (
+              <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-12 text-center text-gray-400 text-sm">
+                Sélectionnez une tombola pour voir les participations
+              </div>
+            ) : (
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-semibold text-gray-900">{selected.titre}</h3>
+                  <button
+                    onClick={tirage}
+                    className="bg-purple-500 hover:bg-purple-600 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+                  >
+                    🎰 Tirage au sort
+                  </button>
+                </div>
+
+                {/* Filter */}
+                <div className="flex gap-1 bg-gray-100 p-1 rounded-xl mb-4 w-fit">
+                  {[['tous', 'Toutes'], ['en_attente', 'En attente'], ['valide', 'Validées'], ['rejete', 'Rejetées']].map(([v, l]) => (
+                    <button key={v} onClick={() => setFilterStatut(v)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filterStatut === v ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                      {l}
+                    </button>
+                  ))}
+                </div>
+
+                {loadingP ? (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="w-6 h-6 border-3 border-amber-500 border-t-transparent rounded-full animate-spin" />
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {filtered.map(p => {
+                      const sc = STATUT_CONFIG[p.statut] || STATUT_CONFIG.en_attente
+                      return (
+                        <div key={p.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <p className="font-medium text-gray-900 text-sm">{p.prenom} {p.nom}</p>
+                              <p className="text-xs text-gray-400">{p.email}</p>
+                              <p className="text-xs text-gray-500 mt-1">Commande : <span className="font-mono">{p.code_commande}</span></p>
+                            </div>
+                            <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${sc.color}`}>{sc.label}</span>
+                          </div>
+
+                          {/* IA info */}
+                          <div className="flex items-center gap-4 mt-3 pt-3 border-t border-gray-50">
+                            {p.score_ia !== null && p.score_ia !== undefined && (
+                              <div className="text-xs">
+                                <span className="text-gray-400">Score IA : </span>
+                                <span className={`font-semibold ${p.score_ia >= 0.7 ? 'text-green-600' : p.score_ia >= 0.4 ? 'text-amber-600' : 'text-red-600'}`}>
+                                  {(p.score_ia * 100).toFixed(0)}%
+                                </span>
+                              </div>
+                            )}
+                            {p.sentiment && (
+                              <div className="text-xs">
+                                <span className="text-gray-400">Sentiment : </span>
+                                <span>{SENTIMENT_EMOJI[p.sentiment]} {p.sentiment}</span>
+                              </div>
+                            )}
+                            {p.validee_par_ia !== null && p.validee_par_ia !== undefined && (
+                              <span className={`text-xs px-2 py-0.5 rounded-full ${p.validee_par_ia ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'}`}>
+                                IA : {p.validee_par_ia ? 'valide' : 'suspect'}
+                              </span>
+                            )}
+                          </div>
+
+                          {p.statut === 'en_attente' && (
+                            <div className="flex gap-2 mt-3">
+                              <button onClick={() => valider(p.id)} className="flex-1 bg-green-500 hover:bg-green-600 text-white text-xs font-medium py-2 rounded-lg transition-colors">
+                                Valider
+                              </button>
+                              <button onClick={() => rejeter(p.id)} className="flex-1 bg-red-500 hover:bg-red-600 text-white text-xs font-medium py-2 rounded-lg transition-colors">
+                                Rejeter
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                    {filtered.length === 0 && (
+                      <div className="bg-white rounded-xl border border-gray-100 p-10 text-center text-gray-400 text-sm shadow-sm">
+                        Aucune participation
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        /* SPINS HISTORY TAB */
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          {loadingSpins ? (
+            <div className="flex items-center justify-center py-20">
+               <div className="w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full animate-spin" />
             </div>
           ) : (
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold text-gray-900">{selected.titre}</h3>
-                <button
-                  onClick={tirage}
-                  className="bg-purple-500 hover:bg-purple-600 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-                >
-                  🎰 Tirage au sort
-                </button>
-              </div>
-
-              {/* Filter */}
-              <div className="flex gap-1 bg-gray-100 p-1 rounded-xl mb-4 w-fit">
-                {[['tous', 'Toutes'], ['en_attente', 'En attente'], ['valide', 'Validées'], ['rejete', 'Rejetées']].map(([v, l]) => (
-                  <button key={v} onClick={() => setFilterStatut(v)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filterStatut === v ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-                    {l}
-                  </button>
-                ))}
-              </div>
-
-              {loadingP ? (
-                <div className="flex items-center justify-center py-12">
-                  <div className="w-6 h-6 border-3 border-amber-500 border-t-transparent rounded-full animate-spin" />
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {filtered.map(p => {
-                    const sc = STATUT_CONFIG[p.statut] || STATUT_CONFIG.en_attente
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-gray-50 text-gray-500 uppercase text-[10px] font-bold tracking-widest">
+                  <tr>
+                    <th className="px-6 py-4">Client</th>
+                    <th className="px-6 py-4">Prix gagné</th>
+                    <th className="px-6 py-4">Date</th>
+                    <th className="px-6 py-4">Points</th>
+                    <th className="px-6 py-4">Statut</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {spins.length === 0 && (
+                    <tr>
+                      <td colSpan="5" className="px-6 py-12 text-center text-gray-400 italic">Aucun spin enregistré pour le moment.</td>
+                    </tr>
+                  )}
+                  {spins.map(s => {
+                    const sc = STATUT_CONFIG[s.statut] || { label: s.statut, color: 'bg-gray-100 text-gray-600' }
                     return (
-                      <div key={p.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <p className="font-medium text-gray-900 text-sm">{p.prenom} {p.nom}</p>
-                            <p className="text-xs text-gray-400">{p.email}</p>
-                            <p className="text-xs text-gray-500 mt-1">Commande : <span className="font-mono">{p.code_commande}</span></p>
-                          </div>
-                          <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${sc.color}`}>{sc.label}</span>
-                        </div>
-
-                        {/* IA info */}
-                        <div className="flex items-center gap-4 mt-3 pt-3 border-t border-gray-50">
-                          {p.score_ia !== null && p.score_ia !== undefined && (
-                            <div className="text-xs">
-                              <span className="text-gray-400">Score IA : </span>
-                              <span className={`font-semibold ${p.score_ia >= 0.7 ? 'text-green-600' : p.score_ia >= 0.4 ? 'text-amber-600' : 'text-red-600'}`}>
-                                {(p.score_ia * 100).toFixed(0)}%
-                              </span>
-                            </div>
-                          )}
-                          {p.sentiment && (
-                            <div className="text-xs">
-                              <span className="text-gray-400">Sentiment : </span>
-                              <span>{SENTIMENT_EMOJI[p.sentiment]} {p.sentiment}</span>
-                            </div>
-                          )}
-                          {p.validee_par_ia !== null && p.validee_par_ia !== undefined && (
-                            <span className={`text-xs px-2 py-0.5 rounded-full ${p.validee_par_ia ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'}`}>
-                              IA : {p.validee_par_ia ? 'valide' : 'suspect'}
-                            </span>
-                          )}
-                        </div>
-
-                        {p.statut === 'en_attente' && (
-                          <div className="flex gap-2 mt-3">
-                            <button onClick={() => valider(p.id)} className="flex-1 bg-green-500 hover:bg-green-600 text-white text-xs font-medium py-2 rounded-lg transition-colors">
-                              Valider
-                            </button>
-                            <button onClick={() => rejeter(p.id)} className="flex-1 bg-red-500 hover:bg-red-600 text-white text-xs font-medium py-2 rounded-lg transition-colors">
-                              Rejeter
-                            </button>
-                          </div>
-                        )}
-                      </div>
+                      <tr key={s.id} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-6 py-4 font-medium text-gray-900">{s.client_nom}</td>
+                        <td className="px-6 py-4 text-amber-600 font-bold">{s.prix_nom}</td>
+                        <td className="px-6 py-4 text-gray-500">{new Date(s.date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
+                        <td className="px-6 py-4">
+                           <div className="text-[10px] text-gray-400 uppercase font-bold">Avant: {s.points_avant}</div>
+                           <div className="text-xs font-bold text-gray-700">Après: {s.points_apres}</div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${sc.color}`}>
+                            {sc.label}
+                          </span>
+                        </td>
+                      </tr>
                     )
                   })}
-                  {filtered.length === 0 && (
-                    <div className="bg-white rounded-xl border border-gray-100 p-10 text-center text-gray-400 text-sm shadow-sm">
-                      Aucune participation
-                    </div>
-                  )}
-                </div>
-              )}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
-      </div>
+      )}
 
       {/* Create Modal */}
       {showCreate && (

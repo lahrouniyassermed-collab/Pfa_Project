@@ -6,6 +6,7 @@ import LoginPage from './pages/LoginPage'
 import SetupPage from './pages/SetupPage'
 import LandingPage from './pages/LandingPage'
 import CommandeQR from './pages/CommandeQR'
+import QRLanding from './pages/QRLanding'
 
 // Gérant
 import GerantDashboard from './pages/GerantDashboard'
@@ -25,6 +26,10 @@ import ServeurCommande from './pages/ServeurCommande'
 import CuisinierInterface from './pages/CuisinierInterface'
 import CuisinierProposer from './pages/CuisinierProposer'
 
+// Client Fidélité
+import ClientLogin from './pages/ClientLogin'
+import ClientDashboard from './pages/ClientDashboard'
+
 function App() {
   return (
     <AuthProvider>
@@ -34,7 +39,20 @@ function App() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/setup" element={<SetupPage />} />
           <Route path="/login" element={<LoginPage />} />
-          <Route path="/commande" element={<CommandeQR />} />
+          <Route path="/commande" element={<QRLanding />} />
+          <Route path="/commande/menu" element={<CommandeQR />} />
+
+          {/* Client Fidélité */}
+          <Route path="/client" element={<Navigate to="/client/dashboard" replace />} />
+          <Route path="/client/login" element={<ClientLogin />} />
+          <Route
+            path="/client/dashboard"
+            element={
+              <ProtectedRoute roles={['client']}>
+                <ClientDashboard />
+              </ProtectedRoute>
+            }
+          />
 
           {/* Gérant */}
           <Route

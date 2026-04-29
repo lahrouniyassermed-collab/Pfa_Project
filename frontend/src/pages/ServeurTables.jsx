@@ -30,10 +30,11 @@ export default function ServeurTables() {
     const map = {}
     const actives = []
     c.data.forEach(cmd => {
-      if (cmd.statut !== 'cloturee') {
-        map[cmd.table_id] = cmd
-        actives.push(cmd)
-      }
+      if (cmd.statut === 'cloturee' || cmd.statut === 'annulee') return
+      // Ignorer les commandes QR non encore payées (client encore en train de commander)
+      if (cmd.statut === 'en_cours' && cmd.origine === 'qr_table') return
+      map[cmd.table_id] = cmd
+      actives.push(cmd)
     })
     setCommandesActives(map)
     setCommandesList(actives)
@@ -48,10 +49,12 @@ export default function ServeurTables() {
   }, [load])
 
   function handleTableClick(table) {
-    if (table.statut === 'libre') {
+    const cmdActive = commandesActives[table.id]
+    // Si table libre ET aucune commande active → prendre une commande
+    if (table.statut === 'libre' && !cmdActive) {
       navigate(`/serveur/commande?table_id=${table.id}&table_num=${table.numero}`)
     } else {
-      // Table occupée/réservée → ouvrir le panel d'action
+      // Table occupée/réservée, ou commande QR déjà active → ouvrir le panel
       setSelected(s => s?.id === table.id ? null : table)
     }
   }
@@ -101,9 +104,12 @@ export default function ServeurTables() {
                     className={`cursor-pointer bg-white rounded-xl border-2 px-4 py-3 flex items-center justify-between hover:shadow-md transition-all ${isPrete ? 'border-green-300' : 'border-gray-200'}`}
                   >
                     <div>
-                      <p className="font-bold text-sm text-gray-900">
+                      <p className="font-bold text-sm text-gray-900 flex items-center gap-2">
                         {cmd.code_unique ?? `CMD #${cmd.id}`}
-                        {tableNum && <span className="font-normal text-gray-500 ml-1">— Table {tableNum}</span>}
+                        {tableNum && <span className="font-normal text-gray-500">— Table {tableNum}</span>}
+                        {cmd.origine === 'qr_table' && (
+                          <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-medium">QR</span>
+                        )}
                       </p>
                       <span className={`text-xs font-semibold px-2 py-0.5 rounded-full mt-1 inline-block ${cfg.badge}`}>
                         {cfg.label}
@@ -190,9 +196,14 @@ export default function ServeurTables() {
                       </div>
                       <p className="text-xs text-gray-500">{table.capacite} pers.</p>
                       {cmdActive && cmdStatut && (
-                        <span className={`text-xs font-medium px-1.5 py-0.5 rounded-full mt-1.5 inline-block ${cmdStatut.badge}`}>
-                          {cmdStatut.label}
-                        </span>
+                        <div className="flex items-center gap-1 mt-1.5 flex-wrap">
+                          <span className={`text-xs font-medium px-1.5 py-0.5 rounded-full inline-block ${cmdStatut.badge}`}>
+                            {cmdStatut.label}
+                          </span>
+                          {cmdActive.origine === 'qr_table' && (
+                            <span className="text-xs bg-amber-100 text-amber-700 px-1 py-0.5 rounded font-medium">QR</span>
+                          )}
+                        </div>
                       )}
                       {table.statut === 'libre' && (
                         <p className="text-xs text-green-600 mt-1.5">Appuyer pour commander</p>

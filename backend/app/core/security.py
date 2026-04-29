@@ -39,6 +39,17 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         raise HTTPException(status_code=401, detail="Utilisateur introuvable")
     return user
 
+def get_current_client(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    from app.models.models import ClientFidelite
+    payload = decode_token(token)
+    email = payload.get("sub")
+    if not email:
+        raise HTTPException(status_code=401, detail="Token invalide")
+    client = db.query(ClientFidelite).filter(ClientFidelite.email == email).first()
+    if not client:
+        raise HTTPException(status_code=401, detail="Client introuvable")
+    return client
+
 def require_role(*roles):
     def checker(current_user=Depends(get_current_user)):
         if current_user.role.value not in roles:

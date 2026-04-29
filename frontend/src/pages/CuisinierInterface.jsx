@@ -125,6 +125,11 @@ export default function CuisinierInterface() {
                         Table {cmd.table.numero}
                       </span>
                     )}
+                    {cmd.origine === 'qr_table' && (
+                      <span className="bg-white/30 text-white text-xs px-2 py-0.5 rounded-full font-bold tracking-wide">
+                        📱 QR
+                      </span>
+                    )}
                   </div>
                   <Timer dateHeure={cmd.date_heure} />
                 </div>

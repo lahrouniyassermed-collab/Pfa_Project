@@ -130,6 +130,7 @@ def commandes_cuisine(db: Session = Depends(get_db), user=Depends(require_role("
         "code_unique": c.code_unique,
         "date_heure": c.date_heure.isoformat() if c.date_heure else None,
         "statut": c.statut.value,
+        "origine": c.origine.value if c.origine else "serveur",
         "cuisinier": f"{c.cuisinier.prenom} {c.cuisinier.nom}" if c.cuisinier else None,
         "table": {"id": c.table.id, "numero": c.table.numero} if c.table else None,
         "lignes": [{
@@ -238,7 +239,16 @@ def tout_lire(db: Session = Depends(get_db), _=Depends(require_role("gerant"))):
 # ── Gérant / Serveur : voir toutes les commandes ─────────
 @router.get("/")
 def toutes_commandes(db: Session = Depends(get_db), _=Depends(require_role("serveur", "gerant"))):
-    return db.query(Commande).order_by(Commande.date_heure.desc()).limit(50).all()
+    commandes = db.query(Commande).order_by(Commande.date_heure.desc()).limit(50).all()
+    return [{
+        "id": c.id,
+        "code_unique": c.code_unique,
+        "table_id": c.table_id,
+        "statut": c.statut.value,
+        "origine": c.origine.value if c.origine else "serveur",
+        "montant_total": c.montant_total,
+        "date_heure": c.date_heure.isoformat() if c.date_heure else None,
+    } for c in commandes]
 
 @router.get("/{commande_id}")
 def detail_commande(commande_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):

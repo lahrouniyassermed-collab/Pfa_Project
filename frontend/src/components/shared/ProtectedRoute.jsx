@@ -3,7 +3,9 @@ import { useAuth } from '../../hooks/useAuth'
 
 export default function ProtectedRoute({ children, roles }) {
   const { user } = useAuth()
-  if (!user) return <Navigate to="/login" replace />
-  if (roles && !roles.includes(user.role)) return <Navigate to="/login" replace />
+  const loginPath = roles && roles.includes('client') ? '/client/login' : '/login'
+  
+  if (!user) return <Navigate to={loginPath} replace />
+  if (roles && !roles.includes(user.role)) return <Navigate to={loginPath} replace />
   return children
 }
