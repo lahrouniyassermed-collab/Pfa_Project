@@ -107,7 +107,7 @@ export default function CuisinierProposer() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm text-gray-600 mb-1">Prix proposé (€) *</label>
+                  <label className="block text-sm text-gray-600 mb-1">Prix proposé (Dh) *</label>
                   <input
                     type="number" step="0.01" min="0"
                     value={form.prix}
@@ -221,7 +221,7 @@ export default function CuisinierProposer() {
                     <div>
                       <p className="font-semibold text-gray-900">{p.nom}</p>
                       {p.description && <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{p.description}</p>}
-                      <p className="text-sm font-bold text-amber-600 mt-2">{p.prix?.toFixed(2)} €</p>
+                      <p className="text-sm font-bold text-amber-600 mt-2">{p.prix?.toFixed(2)} Dh</p>
                     </div>
                     <span className={`text-xs px-2.5 py-1 rounded-full font-medium shrink-0 ml-2 ${sc.color}`}>
                       {sc.label}

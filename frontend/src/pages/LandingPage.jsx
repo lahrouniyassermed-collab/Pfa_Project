@@ -1,490 +1,612 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import FloorPlan from '../components/landing/FloorPlan'
-import { categories, plats, avisClients, offresEmploi } from '../data/mockData'
-import {
-  UtensilsCrossed, Star, MapPin, Phone, Clock,
-  MessageCircle, ChevronDown, Users, CalendarCheck, Send,
-  Briefcase, Trophy, ChevronRight, Menu, X, ExternalLink
-} from 'lucide-react'
+import { getMenu, creerReservation, getAvisPublics, deposerAvis } from '../services/api'
+import { ArrowRight, X, CheckCircle, Loader2 } from 'lucide-react'
 
-const NAV_LINKS = [
-  { href: '#menu',        label: 'Menu' },
-  { href: '#reservation', label: 'Réserver' },
-  { href: '#avis',        label: 'Avis' },
-  { href: '#emplois',     label: 'Carrières' },
-  { href: '#fidelite',    label: 'Fidélité' },
-]
+const BACKEND = 'http://localhost:8000'
 
+// Même logique que CommandeQR — image réelle d'abord, sinon fallback Unsplash
+const IMG_SALADE  = 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=600&q=80'
+const IMG_DESSERT = 'https://images.unsplash.com/photo-1563805042-7684c019e1cb?w=600&q=80'
+const IMG_TAJINE  = 'https://images.unsplash.com/photo-1585937421612-70a008356fbe?w=600&q=80'
+const IMG_ENTREE  = 'https://images.unsplash.com/photo-1541014741259-de529411b96a?w=600&q=80'
+const IMG_PLAT    = 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=600&q=80'
+const IMG_BOISSON = 'https://images.unsplash.com/photo-1544145945-f90425340c7e?w=600&q=80'
+
+function getPlatImage(plat, catNom) {
+  if (plat.image) {
+    // image uploadée → préfixer avec l'URL backend
+    return plat.image.startsWith('http') ? plat.image : `${BACKEND}${plat.image}`
+  }
+  const n = plat.nom.toLowerCase()
+  const c = (catNom || '').toLowerCase()
+  if (n.includes('salade') || n.includes('nicoise') || n.includes('niçoise')) return IMG_SALADE
+  if (n.includes('tajine') || n.includes('tagine'))                            return IMG_TAJINE
+  if (n.includes('moelleux') || n.includes('fondant') || n.includes('gâteau') || n.includes('tarte') || n.includes('glace') || c.includes('dessert')) return IMG_DESSERT
+  if (c.includes('boisson') || n.includes('jus') || n.includes('café') || n.includes('thé') || n.includes('soda') || n.includes('eau')) return IMG_BOISSON
+  if (c.includes('entrée') || c.includes('soupe'))                             return IMG_ENTREE
+  return IMG_PLAT
+}
+
+// ── Design tokens (container-restaurant palette) ────────────────────────────
+const C = {
+  ink:    '#0E0E0E', carbon: '#1A1A1A', steel: '#2C2C2C',
+  iron:   '#4A4A4A', smoke: '#8A8A8A',  fog:   '#BDBDBD',
+  ash:    '#EFEFEF', canvas:'#F7F4EF',  white: '#FFFFFF',
+  cedar:  '#A0714F', timber:'#C8966A',  bark:  '#5C3D24',
+  moss:   '#5A6B47', leaf:  '#7A8F5F',
+}
+const display = "'Cormorant Garamond', serif"
+const body    = "'DM Sans', sans-serif"
+const mono    = "'JetBrains Mono', monospace"
+
+const TIME_SLOTS = ['12:00','13:00','14:00','18:00','18:30','19:00','19:30','20:00','20:30','21:00','21:30','22:00']
+
+// ── Component ────────────────────────────────────────────────────────────────
 export default function LandingPage() {
-  const navigate = useNavigate()
-  const [mobileOpen, setMobileOpen] = useState(false)
-  const [selectedTable, setSelectedTable] = useState(null)
-  const [activeCat, setActiveCat] = useState(categories[0]?.id)
-  const [resaForm, setResaForm] = useState({ nom: '', telephone: '', date: '', heure: '', personnes: 2 })
-  const [resaSent, setResaSent] = useState(false)
-  const [activeOffre, setActiveOffre] = useState(null)
-  const [candidatureForm, setCandidatureForm] = useState({ prenom: '', nom: '', email: '', message: '' })
-  const [candidatureSent, setCandidatureSent] = useState(false)
+  const navigate    = useNavigate()
+  const [view, setView]           = useState('home')  // 'home' | 'menu'
+  const [menuOpen, setMenuOpen]   = useState(false)   // modal réservation
+  const [scrolled, setScrolled]   = useState(false)
 
-  const filteredPlats = plats.filter(p => p.categorie_id === activeCat && p.disponible)
+  // Menu API
+  const [categories, setCategories] = useState([])
+  const [activeTab, setActiveTab]   = useState(null)
+  useEffect(() => {
+    getMenu().then(r => {
+      const cats = r.data.filter(c => c.plats.length > 0)
+      setCategories(cats)
+      if (cats.length > 0) setActiveTab(cats[0].id)
+    }).catch(() => {})
+  }, [])
+  const currentPlats = categories.find(c => c.id === activeTab)?.plats || []
 
-  function handleResa(e) {
+  // Scroll header
+  useEffect(() => {
+    const fn = () => setScrolled(window.scrollY > 40)
+    window.addEventListener('scroll', fn)
+    return () => window.removeEventListener('scroll', fn)
+  }, [])
+
+  // Reservation modal state
+  const [resaForm, setResaForm] = useState({ nom: '', telephone: '', date: '', heure: '19:30', personnes: '2', message: '' })
+  const [resaLoading, setResaLoading] = useState(false)
+  const [resaError, setResaError]     = useState('')
+  const [resaCode, setResaCode]       = useState(null)
+
+  const [avis, setAvis]               = useState([])
+  const [avisForm, setAvisForm]       = useState({ nom: '', note: 5, commentaire: '' })
+  const [avisLoading, setAvisLoading] = useState(false)
+  const [avisSent, setAvisSent]       = useState(false)
+  const [avisError, setAvisError]     = useState('')
+  const [avisMessage, setAvisMessage] = useState('')
+
+  useEffect(() => {
+    getAvisPublics().then(r => setAvis(r.data)).catch(() => {})
+  }, [])
+
+  async function handleResa(e) {
     e.preventDefault()
-    setResaSent(true)
+    setResaError('')
+    setResaLoading(true)
+    try {
+      const r = await creerReservation({
+        nom_complet:  resaForm.nom,
+        telephone:    resaForm.telephone,
+        date:         resaForm.date,
+        heure:        resaForm.heure,
+        nb_personnes: parseInt(resaForm.personnes),
+        message:      resaForm.message || null,
+        zone:         'salle',
+      })
+      setResaCode(r.data.code || `RES-${Date.now().toString().slice(-6)}`)
+    } catch (err) {
+      const d = err.response?.data?.detail
+      setResaError(typeof d === 'string' ? d : 'Erreur — vérifiez vos informations.')
+    } finally {
+      setResaLoading(false)
+    }
   }
 
-  function handleCandidature(e) {
-    e.preventDefault()
-    setCandidatureSent(true)
-    setActiveOffre(null)
-  }
+  function openModal()  { setMenuOpen(true);  setResaCode(null); setResaError('') }
+  function closeModal() { setMenuOpen(false); setResaCode(null); setResaError(''); setResaForm({ nom: '', telephone: '', date: '', heure: '19:30', personnes: '2', message: '' }) }
 
   return (
-    <div className="min-h-screen bg-[#0a1408] text-[#f5f0e8]" style={{ fontFamily: "'Inter', sans-serif" }}>
+    <div style={{ fontFamily: body, background: C.ink, color: C.white, minHeight: '100vh' }}>
 
-      {/* ── NAV ── */}
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-[rgba(10,20,8,0.92)] backdrop-blur-md border-b border-[rgba(232,130,74,0.1)]">
-        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-          <a href="#hero" className="text-2xl font-bold text-[#e8824a]"
-            style={{ fontFamily: "'Playfair Display', serif", textShadow: '0 0 24px rgba(232,130,74,0.4)' }}>
-            SKY07
-          </a>
-          <div className="hidden md:flex items-center gap-7">
-            {NAV_LINKS.map(l => (
-              <a key={l.href} href={l.href}
-                className="text-sm text-[rgba(245,240,232,0.65)] hover:text-[#e8824a] transition-colors font-medium">
-                {l.label}
-              </a>
-            ))}
-          </div>
-          <div className="hidden md:flex items-center gap-3">
-            <a href="tel:+212600000000"
-              className="flex items-center gap-1.5 text-sm text-[rgba(245,240,232,0.55)] hover:text-[#f5f0e8] transition-colors">
-              <Phone size={13} /> +212 6 00 00 00
-            </a>
-            <button onClick={() => navigate('/qr')}
-              className="bg-[#e8824a] text-black text-sm font-semibold px-4 py-2 rounded-[8px] hover:bg-[#d4703a] transition-colors"
-              style={{ boxShadow: '0 4px 14px rgba(232,130,74,0.35)' }}>
-              Commander
-            </button>
-          </div>
-          <button className="md:hidden text-[#f5f0e8]" onClick={() => setMobileOpen(o => !o)}>
-            {mobileOpen ? <X size={22} /> : <Menu size={22} />}
-          </button>
-        </div>
-        {mobileOpen && (
-          <div className="md:hidden bg-[#0d1b0b] border-t border-[rgba(232,130,74,0.08)] px-6 py-4 space-y-3">
-            {NAV_LINKS.map(l => (
-              <a key={l.href} href={l.href} onClick={() => setMobileOpen(false)}
-                className="block text-sm text-[rgba(245,240,232,0.7)] hover:text-[#e8824a] py-1 transition-colors">
-                {l.label}
-              </a>
-            ))}
-            <button onClick={() => navigate('/qr')}
-              className="w-full mt-2 bg-[#e8824a] text-black text-sm font-semibold px-4 py-2.5 rounded-[8px]">
-              Commander
-            </button>
-          </div>
-        )}
-      </nav>
+      {/* ── HEADER ─────────────────────────────────────────────────────────── */}
+      <header style={{
+        position: 'fixed', top: 0, left: 0, right: 0, height: 64, zIndex: 100,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '0 40px',
+        background: scrolled ? 'rgba(14,14,14,0.98)' : 'rgba(14,14,14,0.88)',
+        backdropFilter: 'blur(12px)',
+        borderBottom: `1px solid rgba(255,255,255,0.07)`,
+        transition: 'background 200ms ease',
+      }}>
+        <span
+          onClick={() => { setView('home'); window.scrollTo(0,0) }}
+          style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 26, color: C.white, letterSpacing: '0.12em', cursor: 'pointer', userSelect: 'none' }}
+        >SKY07</span>
 
-      {/* ── HERO ── */}
-      <section id="hero" className="relative min-h-screen flex flex-col items-center justify-center text-center px-6 pt-16"
-        style={{ background: 'radial-gradient(ellipse at 50% 30%, rgba(232,130,74,0.08) 0%, transparent 60%), linear-gradient(180deg, #0a1408 0%, #0d1b0b 100%)' }}>
-        <div className="absolute inset-0 pointer-events-none"
-          style={{ backgroundImage: 'radial-gradient(rgba(232,130,74,0.03) 1px, transparent 1px)', backgroundSize: '28px 28px' }} />
+        <nav style={{ display: 'flex', gap: 32, listStyle: 'none' }}>
+          {[
+            { label: 'menu',        action: () => { setView('menu');  window.scrollTo(0,0) } },
+            { label: 'réservation', action: () => navigate('/reservation') },
+            { label: 'fidélité',    action: () => navigate('/client/login') },
+          ].map(({ label, action }) => (
+            <button key={label} onClick={action} style={{
+              background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+              fontSize: 13, fontWeight: 500, letterSpacing: '0.04em',
+              color: C.smoke, transition: 'color 200ms',
+              fontFamily: body,
+            }}
+              onMouseEnter={e => e.target.style.color = C.white}
+              onMouseLeave={e => e.target.style.color = C.smoke}
+            >{label}</button>
+          ))}
+        </nav>
 
-        <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[#e8824a] mb-5 opacity-80">
-          Restaurant Gastronomique Marocain
-        </p>
-        <h1 className="text-[clamp(64px,12vw,110px)] font-black leading-none text-white mb-6"
-          style={{ fontFamily: "'Playfair Display', serif", textShadow: '0 0 60px rgba(232,130,74,0.25)' }}>
-          SKY07
-        </h1>
-        <p className="text-lg text-[rgba(245,240,232,0.55)] max-w-md mb-10 leading-relaxed">
-          Une cuisine marocaine raffinée, des saveurs authentiques et une ambiance unique au cœur de Casablanca.
-        </p>
-        <div className="flex flex-wrap gap-4 justify-center">
-          <a href="#menu"
-            className="flex items-center gap-2 bg-[#e8824a] text-black font-semibold px-7 py-3.5 rounded-[10px] text-sm transition-all hover:bg-[#d4703a] hover:scale-105"
-            style={{ boxShadow: '0 6px 24px rgba(232,130,74,0.4)' }}>
-            <UtensilsCrossed size={16} /> Voir le menu
-          </a>
-          <a href="#reservation"
-            className="flex items-center gap-2 border border-[rgba(232,130,74,0.4)] text-[#e8824a] font-semibold px-7 py-3.5 rounded-[10px] text-sm transition-all hover:border-[#e8824a] hover:bg-[rgba(232,130,74,0.07)]">
-            <CalendarCheck size={16} /> Réserver une table
-          </a>
-        </div>
+        <button onClick={() => navigate('/reservation')} style={{
+          padding: '8px 20px', background: C.cedar, color: C.white,
+          border: 'none', borderRadius: 4, cursor: 'pointer',
+          fontSize: 13, fontWeight: 500, letterSpacing: '0.04em', fontFamily: body,
+          transition: 'background 200ms',
+        }}
+          onMouseEnter={e => e.target.style.background = C.timber}
+          onMouseLeave={e => e.target.style.background = C.cedar}
+        >Réserver</button>
+      </header>
 
-        {/* Infos rapides */}
-        <div className="flex flex-wrap gap-6 justify-center mt-16 text-xs text-[rgba(245,240,232,0.38)]">
-          <span className="flex items-center gap-1.5"><MapPin size={12} /> Casablanca, Maroc</span>
-          <span className="flex items-center gap-1.5"><Clock size={12} /> Lun – Dim · 12h00 – 23h30</span>
-          <span className="flex items-center gap-1.5"><Phone size={12} /> +212 6 00 00 00 00</span>
-        </div>
-
-        <a href="#menu" className="absolute bottom-10 animate-bounce text-[rgba(232,130,74,0.4)] hover:text-[#e8824a] transition-colors">
-          <ChevronDown size={28} />
-        </a>
-      </section>
-
-      {/* ── MENU ── */}
-      <section id="menu" className="py-24 px-6 bg-[#0d1b0b]">
-        <div className="max-w-6xl mx-auto">
-          <SectionTitle title="Notre Menu" sub="Des recettes transmises de génération en génération" />
-
-          {/* Onglets catégories */}
-          <div className="flex flex-wrap gap-2 justify-center mb-10">
-            {categories.map(cat => (
-              <button key={cat.id} onClick={() => setActiveCat(cat.id)}
-                className={`px-5 py-2 rounded-full text-sm font-semibold transition-all ${
-                  activeCat === cat.id
-                    ? 'bg-[#e8824a] text-black shadow-lg'
-                    : 'bg-[rgba(255,255,255,0.05)] text-[rgba(245,240,232,0.6)] hover:bg-[rgba(255,255,255,0.09)] border border-[rgba(255,255,255,0.07)]'
-                }`}>
-                {cat.nom}
-              </button>
-            ))}
-          </div>
-
-          {/* Grille plats */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-            {filteredPlats.map(plat => (
-              <div key={plat.id}
-                className="bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.07)] rounded-[16px] overflow-hidden hover:border-[rgba(232,130,74,0.25)] transition-all group">
-                {plat.image && (
-                  <div className="h-44 overflow-hidden">
-                    <img src={plat.image} alt={plat.nom}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                  </div>
-                )}
-                <div className="p-4">
-                  <h4 className="font-semibold text-[#f5f0e8] text-sm leading-snug">{plat.nom}</h4>
-                  {plat.description && (
-                    <p className="text-xs text-[rgba(245,240,232,0.45)] mt-1.5 line-clamp-2 leading-relaxed">
-                      {plat.description}
-                    </p>
-                  )}
-                  <p className="text-[#e8824a] font-bold text-base mt-3">{plat.prix} MAD</p>
-                </div>
+      {/* ── HOME VIEW ──────────────────────────────────────────────────────── */}
+      {view === 'home' && (
+        <>
+          {/* HERO */}
+          <div style={{ position: 'relative', height: '100vh', minHeight: 600, display: 'flex', alignItems: 'flex-end' }}>
+            <div style={{
+              position: 'absolute', inset: 0,
+              backgroundImage: "url('/hero.webp')",
+              backgroundSize: 'cover', backgroundPosition: 'center 30%',
+              filter: 'brightness(0.48) saturate(0.8)',
+            }} />
+            <div style={{
+              position: 'absolute', inset: 0,
+              background: 'linear-gradient(to top, rgba(14,14,14,0.92) 0%, rgba(14,14,14,0.04) 55%)',
+            }} />
+            <div style={{ position: 'relative', zIndex: 2, padding: '0 80px 80px', maxWidth: 700 }}>
+              <div style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.2em', textTransform: 'uppercase', color: C.cedar, marginBottom: 16 }}>
+                Casablanca · Ouvert tous les jours
               </div>
-            ))}
-          </div>
-
-          <div className="text-center mt-10">
-            <button onClick={() => navigate('/qr')}
-              className="inline-flex items-center gap-2 bg-[rgba(232,130,74,0.12)] border border-[rgba(232,130,74,0.3)] text-[#e8824a] font-semibold px-7 py-3 rounded-[10px] text-sm hover:bg-[rgba(232,130,74,0.2)] transition-all">
-              <UtensilsCrossed size={15} /> Commander depuis votre table
-            </button>
-          </div>
-        </div>
-      </section>
-
-      {/* ── RÉSERVATION ── */}
-      <section id="reservation" className="py-24 px-6"
-        style={{ background: 'linear-gradient(180deg, #0a1408 0%, #0d1b0b 100%)' }}>
-        <div className="max-w-5xl mx-auto">
-          <SectionTitle title="Réserver une table" sub="Choisissez votre emplacement sur le plan interactif" />
-
-          <div className="grid md:grid-cols-2 gap-10 items-start">
-            {/* Plan interactif */}
-            <div>
-              <p className="text-xs text-[rgba(245,240,232,0.4)] mb-3 text-center tracking-wide uppercase">
-                Cliquez sur une table disponible
+              <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 'clamp(16px,2vw,22px)', color: C.cedar, letterSpacing: '0.22em', marginBottom: 12 }}>SKY07</div>
+              <h1 style={{ fontFamily: display, fontSize: 'clamp(52px,8vw,90px)', fontWeight: 300, lineHeight: 1.0, letterSpacing: '-0.02em', color: C.white, marginBottom: 20, margin: '0 0 20px' }}>
+                Bonne cuisine.<br /><em style={{ fontStyle: 'italic', color: C.timber }}>Bonne table.</em>
+              </h1>
+              <p style={{ fontSize: 18, color: C.fog, lineHeight: 1.6, marginBottom: 32, maxWidth: 460 }}>
+                Votre expérience gastronomique au cœur de Casablanca. Une cuisine raffinée, une atmosphère unique, et un service pensé pour vous.
               </p>
-              <FloorPlan
-                selectedTableId={selectedTable?.id ?? null}
-                onTableClick={(table) => {
-                  setSelectedTable(table)
-                  if (table) setResaForm(f => ({ ...f, personnes: table.capacite }))
-                }}
-              />
-              {selectedTable && (
-                <div className="mt-4 flex items-center justify-center gap-2 text-sm font-semibold text-[#e8824a]">
-                  <MapPin size={14} />
-                  Table {selectedTable.numero} · {selectedTable.capacite} pers. · {selectedTable.emplacement}
-                </div>
-              )}
-            </div>
-
-            {/* Formulaire */}
-            <div>
-              {resaSent ? (
-                <div className="flex flex-col items-center justify-center h-full py-16 text-center">
-                  <div className="w-16 h-16 rounded-full bg-[rgba(34,197,94,0.15)] border border-[rgba(34,197,94,0.3)] flex items-center justify-center mb-4">
-                    <CalendarCheck size={28} className="text-[#22c55e]" />
-                  </div>
-                  <h3 className="text-xl font-bold mb-2">Demande envoyée !</h3>
-                  <p className="text-[rgba(245,240,232,0.5)] text-sm">Nous vous contacterons sous 24h pour confirmer.</p>
-                  <button onClick={() => setResaSent(false)}
-                    className="mt-6 text-sm text-[rgba(245,240,232,0.4)] hover:text-[#f5f0e8] transition-colors">
-                    Nouvelle réservation
-                  </button>
-                </div>
-              ) : (
-                <form onSubmit={handleResa}
-                  className="bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.08)] rounded-[20px] p-6 space-y-4">
-                  <h3 className="text-lg font-bold mb-2">Informations</h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="col-span-2">
-                      <label className="block text-[11px] font-semibold uppercase tracking-[0.08em] text-[rgba(245,240,232,0.5)] mb-1.5">
-                        Nom complet
-                      </label>
-                      <input required value={resaForm.nom} placeholder="Votre nom"
-                        onChange={e => setResaForm(f => ({ ...f, nom: e.target.value }))}
-                        className="w-full bg-[rgba(255,255,255,0.05)] border border-[rgba(255,255,255,0.1)] rounded-[8px] px-3 py-2.5 text-sm text-[#f5f0e8] placeholder-[rgba(245,240,232,0.3)] focus:outline-none focus:border-[#e8824a]" />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold uppercase tracking-[0.08em] text-[rgba(245,240,232,0.5)] mb-1.5">
-                        Téléphone
-                      </label>
-                      <input required value={resaForm.telephone} placeholder="+212 6…"
-                        onChange={e => setResaForm(f => ({ ...f, telephone: e.target.value }))}
-                        className="w-full bg-[rgba(255,255,255,0.05)] border border-[rgba(255,255,255,0.1)] rounded-[8px] px-3 py-2.5 text-sm text-[#f5f0e8] placeholder-[rgba(245,240,232,0.3)] focus:outline-none focus:border-[#e8824a]" />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold uppercase tracking-[0.08em] text-[rgba(245,240,232,0.5)] mb-1.5">
-                        Personnes
-                      </label>
-                      <input required type="number" min="1" max="20" value={resaForm.personnes}
-                        onChange={e => setResaForm(f => ({ ...f, personnes: parseInt(e.target.value) }))}
-                        className="w-full bg-[rgba(255,255,255,0.05)] border border-[rgba(255,255,255,0.1)] rounded-[8px] px-3 py-2.5 text-sm text-[#f5f0e8] focus:outline-none focus:border-[#e8824a]" />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold uppercase tracking-[0.08em] text-[rgba(245,240,232,0.5)] mb-1.5">
-                        Date
-                      </label>
-                      <input required type="date" value={resaForm.date}
-                        onChange={e => setResaForm(f => ({ ...f, date: e.target.value }))}
-                        className="w-full bg-[rgba(255,255,255,0.05)] border border-[rgba(255,255,255,0.1)] rounded-[8px] px-3 py-2.5 text-sm text-[#f5f0e8] focus:outline-none focus:border-[#e8824a]" />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold uppercase tracking-[0.08em] text-[rgba(245,240,232,0.5)] mb-1.5">
-                        Heure
-                      </label>
-                      <input required type="time" value={resaForm.heure}
-                        onChange={e => setResaForm(f => ({ ...f, heure: e.target.value }))}
-                        className="w-full bg-[rgba(255,255,255,0.05)] border border-[rgba(255,255,255,0.1)] rounded-[8px] px-3 py-2.5 text-sm text-[#f5f0e8] focus:outline-none focus:border-[#e8824a]" />
-                    </div>
-                  </div>
-                  {selectedTable && (
-                    <div className="flex items-center gap-2 bg-[rgba(232,130,74,0.1)] border border-[rgba(232,130,74,0.25)] rounded-[8px] px-3 py-2.5 text-sm text-[#e8824a]">
-                      <MapPin size={13} />
-                      Table {selectedTable.numero} — {selectedTable.emplacement} sélectionnée
-                    </div>
-                  )}
-                  <button type="submit"
-                    className="w-full bg-[#e8824a] text-black font-bold py-3.5 rounded-[10px] text-sm transition-all hover:bg-[#d4703a] flex items-center justify-center gap-2 mt-2"
-                    style={{ boxShadow: '0 4px 16px rgba(232,130,74,0.35)' }}>
-                    <Send size={15} /> Envoyer la demande
-                  </button>
-                </form>
-              )}
+              <div style={{ display: 'flex', gap: 12 }}>
+                <Btn primary onClick={() => navigate('/reservation')} icon={<ArrowRight size={16} />}>Réserver une table</Btn>
+                <Btn onClick={() => { setView('menu'); window.scrollTo(0,0) }}>Voir le menu</Btn>
+              </div>
             </div>
           </div>
-        </div>
-      </section>
 
-      {/* ── AVIS CLIENTS ── */}
-      <section id="avis" className="py-24 px-6 bg-[#0d1b0b]">
-        <div className="max-w-5xl mx-auto">
-          <SectionTitle title="Ce que disent nos clients" sub="Des expériences authentiques partagées avec vous" />
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {avisClients.map(avis => (
-              <div key={avis.id}
-                className="bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.07)] rounded-[16px] p-6 hover:border-[rgba(232,130,74,0.2)] transition-all">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white shrink-0"
-                    style={{ backgroundColor: avis.couleur }}>
-                    {avis.initiales}
-                  </div>
-                  <div>
-                    <p className="font-semibold text-sm text-[#f5f0e8]">{avis.nom}</p>
-                    <div className="flex gap-0.5 mt-0.5">
-                      {[...Array(5)].map((_, i) => (
-                        <Star key={i} size={11} className={i < avis.note ? 'text-[#e8824a] fill-[#e8824a]' : 'text-[rgba(245,240,232,0.2)]'} />
-                      ))}
-                    </div>
-                  </div>
-                </div>
-                <p className="text-[rgba(245,240,232,0.6)] text-sm italic leading-relaxed">"{avis.commentaire}"</p>
-                <p className="text-[rgba(245,240,232,0.25)] text-xs mt-3">{avis.date}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── CARRIÈRES ── */}
-      <section id="emplois" className="py-24 px-6"
-        style={{ background: 'linear-gradient(180deg, #0a1408 0%, #0d1b0b 100%)' }}>
-        <div className="max-w-3xl mx-auto">
-          <SectionTitle title="Rejoignez notre équipe" sub="Nous recrutons des passionnés de gastronomie" />
-          <div className="space-y-4">
-            {offresEmploi.map(offre => (
-              <div key={offre.id}
-                className="bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.07)] rounded-[16px] p-6 hover:border-[rgba(232,130,74,0.2)] transition-all">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <Briefcase size={15} className="text-[#e8824a] shrink-0" />
-                      <h4 className="font-bold text-[#f5f0e8]">{offre.titre}</h4>
-                    </div>
-                    <span className="inline-block text-[10px] font-bold uppercase tracking-wider bg-[rgba(232,130,74,0.12)] text-[#e8824a] border border-[rgba(232,130,74,0.25)] px-2.5 py-1 rounded-full mb-3">
-                      {offre.type}
-                    </span>
-                    <p className="text-[rgba(245,240,232,0.5)] text-sm leading-relaxed">{offre.description}</p>
-                  </div>
-                  <button onClick={() => setActiveOffre(offre.id)}
-                    className="shrink-0 flex items-center gap-1.5 text-sm font-semibold text-[#e8824a] border border-[rgba(232,130,74,0.35)] px-4 py-2 rounded-[8px] hover:bg-[rgba(232,130,74,0.1)] transition-all whitespace-nowrap">
-                    Postuler <ChevronRight size={14} />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── FIDÉLITÉ ── */}
-      <section id="fidelite" className="py-24 px-6 bg-[#0d1b0b]">
-        <div className="max-w-xl mx-auto text-center">
-          <div className="w-14 h-14 rounded-full bg-[rgba(232,130,74,0.12)] border border-[rgba(232,130,74,0.25)] flex items-center justify-center mx-auto mb-6">
-            <Trophy size={24} className="text-[#e8824a]" />
-          </div>
-          <SectionTitle title="Programme Fidélité" sub="Gagnez des points à chaque visite et débloquez des récompenses exclusives" />
-          <div className="grid grid-cols-3 gap-4 mb-8">
+          {/* STATS STRIP */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', background: C.carbon, borderBottom: `1px solid ${C.steel}` }}>
             {[
-              { icon: <Star size={18} />, label: 'Points à chaque commande' },
-              { icon: <Trophy size={18} />, label: 'Roue de la fortune mensuelle' },
-              { icon: <Users size={18} />, label: 'Offres anniversaire' },
-            ].map((item, i) => (
-              <div key={i} className="bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.07)] rounded-[12px] p-4 text-center">
-                <div className="text-[#e8824a] flex justify-center mb-2">{item.icon}</div>
-                <p className="text-xs text-[rgba(245,240,232,0.5)] leading-snug">{item.label}</p>
+              { label: 'Horaires',       value: '12:00 – 23:00' },
+              { label: 'Adresse',        value: 'Casablanca, Maroc' },
+              { label: 'Capacité',       value: '80 couverts + terrasse' },
+              { label: 'Cuisine ferme',  value: '22:00 chaque soir' },
+            ].map(({ label, value }, i, arr) => (
+              <div key={label} style={{ padding: '28px 32px', borderRight: i < arr.length - 1 ? `1px solid ${C.steel}` : 'none' }}>
+                <div style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.2em', textTransform: 'uppercase', color: C.cedar, marginBottom: 8 }}>{label}</div>
+                <div style={{ fontFamily: display, fontSize: 22, color: C.white }}>{value}</div>
               </div>
             ))}
           </div>
-          <a href="/client/login"
-            className="inline-flex items-center gap-2 bg-[#e8824a] text-black font-bold px-8 py-3.5 rounded-[10px] text-sm hover:bg-[#d4703a] transition-all"
-            style={{ boxShadow: '0 4px 20px rgba(232,130,74,0.38)' }}>
-            <Star size={15} /> Rejoindre le programme
-          </a>
-        </div>
-      </section>
 
-      {/* ── FOOTER ── */}
-      <footer className="py-12 px-6 border-t border-[rgba(255,255,255,0.06)]"
-        style={{ background: '#080f07' }}>
-        <div className="max-w-5xl mx-auto">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
+          {/* ABOUT */}
+          <section style={{ padding: '96px 80px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 80, alignItems: 'center' }}>
             <div>
-              <p className="text-2xl font-bold text-[#e8824a] mb-3"
-                style={{ fontFamily: "'Playfair Display', serif" }}>SKY07</p>
-              <p className="text-sm text-[rgba(245,240,232,0.4)] leading-relaxed">
-                Restaurant gastronomique marocain. Une expérience unique depuis 2018.
+              <div style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.2em', textTransform: 'uppercase', color: C.cedar, marginBottom: 16 }}>À propos</div>
+              <h2 style={{ fontFamily: display, fontSize: 52, fontWeight: 400, lineHeight: 1.05, letterSpacing: '-0.01em', color: C.white, marginBottom: 24, margin: '0 0 24px' }}>
+                SKY07 —<br />une expérience à part.
+              </h2>
+              <p style={{ fontSize: 16, color: C.fog, lineHeight: 1.65, maxWidth: 480, marginBottom: 28 }}>
+                Bienvenue chez SKY07. Un espace pensé pour que chaque repas devienne un moment mémorable. Notre cuisine évolue avec les saisons, nos produits sont soigneusement sélectionnés, et notre équipe est là pour vous.
               </p>
+              <Btn onClick={() => { setView('menu'); window.scrollTo(0,0) }}>Voir le menu →</Btn>
             </div>
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-widest text-[rgba(245,240,232,0.35)] mb-3">Contact</p>
-              <div className="space-y-2 text-sm text-[rgba(245,240,232,0.5)]">
-                <p className="flex items-center gap-2"><MapPin size={13} className="text-[#e8824a]" /> Casablanca, Maroc</p>
-                <p className="flex items-center gap-2"><Phone size={13} className="text-[#e8824a]" /> +212 6 00 00 00 00</p>
-                <p className="flex items-center gap-2"><Clock size={13} className="text-[#e8824a]" /> Lun – Dim · 12h – 23h30</p>
-              </div>
+            <div style={{ aspectRatio: '4/3', background: C.carbon, border: `1px solid ${C.steel}`, overflow: 'hidden' }}>
+              <img src="/hero.webp" alt="Restaurant extérieur" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center 20%', filter: 'brightness(0.7) saturate(0.85)' }} />
             </div>
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-widest text-[rgba(245,240,232,0.35)] mb-3">Suivez-nous</p>
-              <div className="flex gap-3">
-                <a href="https://www.instagram.com/sky07restaurant" target="_blank" rel="noopener noreferrer"
-                  className="w-9 h-9 rounded-[8px] bg-[rgba(255,255,255,0.05)] border border-[rgba(255,255,255,0.08)] flex items-center justify-center text-[rgba(245,240,232,0.5)] hover:text-[#e8824a] hover:border-[rgba(232,130,74,0.4)] transition-all">
-                  <ExternalLink size={15} />
-                </a>
-                <a href="https://wa.me/212600000000" target="_blank" rel="noopener noreferrer"
-                  className="w-9 h-9 rounded-[8px] bg-[rgba(255,255,255,0.05)] border border-[rgba(255,255,255,0.08)] flex items-center justify-center text-[rgba(245,240,232,0.5)] hover:text-[#25D366] hover:border-[rgba(37,211,102,0.4)] transition-all">
-                  <MessageCircle size={15} />
-                </a>
-              </div>
-              <div className="mt-4 space-y-1 text-sm text-[rgba(245,240,232,0.35)]">
-                <a href="/client/login" className="block hover:text-[#e8824a] transition-colors">Espace fidélité</a>
-                <a href="/qr" className="block hover:text-[#e8824a] transition-colors">Commander en ligne</a>
-              </div>
-            </div>
-          </div>
-          <div className="border-t border-[rgba(255,255,255,0.05)] pt-6 text-center text-[11px] text-[rgba(245,240,232,0.2)]">
-            © 2026 SKY07 — Tous droits réservés
-          </div>
-        </div>
-      </footer>
+          </section>
 
-      {/* ── MODAL CANDIDATURE ── */}
-      {activeOffre && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-[#1a2e1a] border border-[rgba(232,130,74,0.2)] rounded-[20px] p-6 w-full max-w-md shadow-2xl">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-bold">Postuler</h2>
-              <button onClick={() => setActiveOffre(null)} className="text-[rgba(245,240,232,0.4)] hover:text-[#f5f0e8]">
-                <X size={20} />
-              </button>
+          <hr style={{ border: 'none', borderTop: `1px solid ${C.steel}` }} />
+
+          {/* RESERVATION CTA */}
+          <section style={{ padding: '96px 80px', textAlign: 'center' }}>
+            <div style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.2em', textTransform: 'uppercase', color: C.cedar, marginBottom: 16 }}>Réservations</div>
+            <h2 style={{ fontFamily: display, fontSize: 52, fontWeight: 400, lineHeight: 1.05, color: C.white, maxWidth: 560, margin: '0 auto 16px' }}>Prêt à nous rejoindre ?</h2>
+            <p style={{ fontSize: 16, color: C.fog, lineHeight: 1.65, maxWidth: 480, margin: '0 auto 32px' }}>
+              Nous gardons quelques places sans réservation chaque soir, mais nous recommandons de réserver à l'avance — surtout pour la terrasse.
+            </p>
+            <Btn primary onClick={() => navigate('/reservation')} icon={<ArrowRight size={16} />}>Réserver une table</Btn>
+          </section>
+
+          <hr style={{ border: 'none', borderTop: `1px solid ${C.steel}` }} />
+
+          {/* AVIS CLIENTS */}
+          <section style={{ padding: '96px 80px' }}>
+            <div style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.2em', textTransform: 'uppercase', color: C.cedar, marginBottom: 16 }}>Avis clients</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 80, alignItems: 'flex-start' }}>
+
+              {/* Form */}
+              <div>
+                <h2 style={{ fontFamily: display, fontSize: 40, fontWeight: 400, color: C.white, marginBottom: 24, lineHeight: 1.1 }}>
+                  Partagez votre expérience.
+                </h2>
+                {avisSent ? (
+                  <div style={{ padding: '24px', background: C.carbon, border: `1px solid ${C.steel}`, borderRadius: 4 }}>
+                    <div style={{ fontFamily: display, fontSize: 22, color: C.cedar, marginBottom: 8 }}>Merci pour votre avis !</div>
+                    <p style={{ fontSize: 14, color: C.fog, lineHeight: 1.6 }}>{avisMessage || 'Votre avis a été pris en compte.'}</p>
+                    <button onClick={() => { setAvisSent(false); setAvisForm({ nom: '', note: 5, commentaire: '' }) }}
+                      style={{ marginTop: 16, background: 'none', border: 'none', cursor: 'pointer', color: C.cedar, fontFamily: body, fontSize: 13 }}>
+                      Laisser un autre avis →
+                    </button>
+                  </div>
+                ) : (
+                  <form onSubmit={async e => {
+                    e.preventDefault(); setAvisError(''); setAvisLoading(true)
+                    try {
+                      const res = await deposerAvis(avisForm)
+                      setAvisMessage(res.data.message || '')
+                      setAvisSent(true)
+                      getAvisPublics().then(r => setAvis(r.data)).catch(() => {})
+                    } catch (err) {
+                      setAvisError(err.response?.data?.detail || 'Une erreur est survenue.')
+                    } finally { setAvisLoading(false) }
+                  }} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 11, letterSpacing: '0.15em', textTransform: 'uppercase', color: C.smoke, marginBottom: 8 }}>Votre nom</label>
+                      <input required value={avisForm.nom} onChange={e => setAvisForm(f => ({ ...f, nom: e.target.value }))}
+                        placeholder="Yasser B." maxLength={60}
+                        style={{ width: '100%', background: C.carbon, border: `1px solid ${C.steel}`, borderRadius: 3, padding: '12px 14px', color: C.white, fontFamily: body, fontSize: 14, outline: 'none' }}
+                        onFocus={e => e.target.style.borderColor = C.cedar}
+                        onBlur={e => e.target.style.borderColor = C.steel} />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 11, letterSpacing: '0.15em', textTransform: 'uppercase', color: C.smoke, marginBottom: 8 }}>Note</label>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        {[1,2,3,4,5].map(n => (
+                          <button key={n} type="button" onClick={() => setAvisForm(f => ({ ...f, note: n }))}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 24, lineHeight: 1, color: n <= avisForm.note ? C.cedar : C.steel, transition: 'color 150ms' }}>
+                            ★
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 11, letterSpacing: '0.15em', textTransform: 'uppercase', color: C.smoke, marginBottom: 8 }}>Commentaire</label>
+                      <textarea required value={avisForm.commentaire} onChange={e => setAvisForm(f => ({ ...f, commentaire: e.target.value }))}
+                        placeholder="Un repas exceptionnel, une ambiance parfaite…" rows={4} maxLength={500}
+                        style={{ width: '100%', background: C.carbon, border: `1px solid ${C.steel}`, borderRadius: 3, padding: '12px 14px', color: C.white, fontFamily: body, fontSize: 14, outline: 'none', resize: 'vertical' }}
+                        onFocus={e => e.target.style.borderColor = C.cedar}
+                        onBlur={e => e.target.style.borderColor = C.steel} />
+                    </div>
+                    {avisError && <div style={{ fontSize: 13, color: '#E57373', padding: '8px 12px', background: 'rgba(229,115,115,0.1)', border: '1px solid rgba(229,115,115,0.3)', borderRadius: 3 }}>{avisError}</div>}
+                    <button type="submit" disabled={avisLoading} style={{
+                      padding: '13px 28px', background: C.cedar, color: C.white, border: 'none', borderRadius: 3,
+                      fontFamily: body, fontSize: 13, fontWeight: 500, letterSpacing: '0.04em', cursor: avisLoading ? 'not-allowed' : 'pointer', opacity: avisLoading ? 0.7 : 1,
+                      alignSelf: 'flex-start',
+                    }}>{avisLoading ? 'Envoi…' : 'Publier mon avis →'}</button>
+                  </form>
+                )}
+              </div>
+
+              {/* Reviews list */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                {avis.length === 0 ? (
+                  <div style={{ padding: '40px 0', textAlign: 'center' }}>
+                    <div style={{ fontFamily: display, fontSize: 20, color: C.fog }}>Soyez le premier à laisser un avis.</div>
+                  </div>
+                ) : avis.slice(0, 5).map((av, i) => (
+                  <div key={i} style={{ padding: '20px 24px', background: C.carbon, border: `1px solid ${C.steel}`, borderRadius: 4 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                      <div>
+                        <div style={{ fontFamily: display, fontSize: 18, color: C.white, marginBottom: 2 }}>{av.nom}</div>
+                        <div style={{ fontSize: 16, color: C.cedar, letterSpacing: '0.05em' }}>{'★'.repeat(av.note)}{'☆'.repeat(5 - av.note)}</div>
+                      </div>
+                      <span style={{ fontSize: 11, color: C.smoke }}>{av.date_depot ? new Date(av.date_depot).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' }) : ''}</span>
+                    </div>
+                    <p style={{ fontSize: 14, color: C.fog, lineHeight: 1.6, margin: 0 }}>{av.commentaire}</p>
+                  </div>
+                ))}
+              </div>
             </div>
-            {candidatureSent ? (
-              <div className="text-center py-8">
-                <p className="text-4xl mb-3">✓</p>
-                <p className="font-semibold text-lg">Candidature envoyée !</p>
-                <p className="text-sm text-[rgba(245,240,232,0.5)] mt-2">Nous reviendrons vers vous rapidement.</p>
-                <button onClick={() => { setCandidatureSent(false); setActiveOffre(null) }}
-                  className="mt-4 text-sm text-[rgba(245,240,232,0.4)] hover:text-[#f5f0e8] transition-colors">Fermer</button>
+          </section>
+
+          {/* FOOTER */}
+          <Footer onMenu={() => { setView('menu'); window.scrollTo(0,0) }} onResa={() => navigate('/reservation')} />
+        </>
+      )}
+
+      {/* ── MENU VIEW ──────────────────────────────────────────────────────── */}
+      {view === 'menu' && (
+        <>
+          <section style={{ padding: '120px 80px 96px' }}>
+            <div style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.2em', textTransform: 'uppercase', color: C.cedar, marginBottom: 16 }}>Menu</div>
+            <h1 style={{ fontFamily: display, fontSize: 52, fontWeight: 400, lineHeight: 1.05, color: C.white, marginBottom: 16, margin: '0 0 16px' }}>Le menu du moment.</h1>
+            <p style={{ fontSize: 16, color: C.fog, lineHeight: 1.65, maxWidth: 560, marginBottom: 40 }}>
+              Notre cuisine travaille avec des producteurs locaux. Le menu évolue souvent — ce que vous voyez ci-dessous est à jour.
+            </p>
+
+            {/* Tabs */}
+            {categories.length === 0 ? (
+              <div style={{ padding: '48px 0', textAlign: 'center' }}>
+                <div style={{ fontFamily: display, fontSize: 24, color: C.fog, marginBottom: 12 }}>Menu en cours de chargement…</div>
+                <p style={{ fontSize: 14, color: C.smoke }}>
+                  Si rien n'apparaît, vérifiez que le serveur backend est démarré sur le port 8000.
+                </p>
               </div>
             ) : (
-              <form onSubmit={handleCandidature} className="space-y-4">
-                <div className="grid grid-cols-2 gap-3">
-                  {[{ label: 'Prénom', key: 'prenom', placeholder: 'Yasser' }, { label: 'Nom', key: 'nom', placeholder: 'Lahrouni' }].map(({ label, key, placeholder }) => (
-                    <div key={key}>
-                      <label className="block text-[11px] font-semibold uppercase tracking-[0.08em] text-[rgba(245,240,232,0.5)] mb-1.5">{label}</label>
-                      <input required value={candidatureForm[key]} placeholder={placeholder}
-                        onChange={e => setCandidatureForm(f => ({ ...f, [key]: e.target.value }))}
-                        className="w-full bg-[rgba(255,255,255,0.05)] border border-[rgba(255,255,255,0.1)] rounded-[8px] px-3 py-2.5 text-sm text-[#f5f0e8] placeholder-[rgba(245,240,232,0.3)] focus:outline-none focus:border-[#e8824a]" />
-                    </div>
+              <>
+                <div style={{ display: 'flex', gap: 0, marginBottom: 48, borderBottom: `1px solid ${C.steel}` }}>
+                  {categories.map(cat => (
+                    <button key={cat.id} onClick={() => setActiveTab(cat.id)} style={{
+                      padding: '12px 24px', fontSize: 13, fontWeight: 500, letterSpacing: '0.04em',
+                      color: activeTab === cat.id ? C.white : C.smoke,
+                      cursor: 'pointer', border: 'none', borderBottom: activeTab === cat.id ? `2px solid ${C.cedar}` : '2px solid transparent',
+                      marginBottom: -1, background: 'none', fontFamily: body,
+                      transition: 'color 200ms, border-color 200ms',
+                    }}>{cat.nom}</button>
                   ))}
                 </div>
-                <div>
-                  <label className="block text-[11px] font-semibold uppercase tracking-[0.08em] text-[rgba(245,240,232,0.5)] mb-1.5">Email</label>
-                  <input required type="email" value={candidatureForm.email} placeholder="vous@email.com"
-                    onChange={e => setCandidatureForm(f => ({ ...f, email: e.target.value }))}
-                    className="w-full bg-[rgba(255,255,255,0.05)] border border-[rgba(255,255,255,0.1)] rounded-[8px] px-3 py-2.5 text-sm text-[#f5f0e8] placeholder-[rgba(245,240,232,0.3)] focus:outline-none focus:border-[#e8824a]" />
+
+                {/* Grid plats avec photos */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+                  {currentPlats.map(plat => {
+                    const catNom = categories.find(c => c.id === activeTab)?.nom || ''
+                    const imgSrc = getPlatImage(plat, catNom)
+                    return (
+                      <div key={plat.id}
+                        style={{
+                          background: C.carbon,
+                          border: `1px solid ${C.steel}`,
+                          borderRadius: 6,
+                          overflow: 'hidden',
+                          transition: 'transform 200ms, border-color 200ms',
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.borderColor = C.cedar }}
+                        onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)';   e.currentTarget.style.borderColor = C.steel }}
+                      >
+                        {/* Photo */}
+                        <div style={{ position: 'relative', aspectRatio: '4/3', overflow: 'hidden', background: C.steel }}>
+                          <img
+                            src={imgSrc}
+                            alt={plat.nom}
+                            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', transition: 'transform 300ms' }}
+                            onMouseEnter={e => e.target.style.transform = 'scale(1.04)'}
+                            onMouseLeave={e => e.target.style.transform = 'scale(1)'}
+                            onError={e => { e.target.src = IMG_PLAT }}
+                          />
+                          {/* Badges */}
+                          <div style={{ position: 'absolute', top: 10, left: 10, display: 'flex', gap: 6 }}>
+                            {plat.vegetarien && (
+                              <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', padding: '3px 8px', borderRadius: 2, background: 'rgba(90,107,71,0.85)', color: '#B5D9A0', backdropFilter: 'blur(4px)' }}>
+                                🌿 Végé
+                              </span>
+                            )}
+                            {plat.sans_gluten && (
+                              <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', padding: '3px 8px', borderRadius: 2, background: 'rgba(160,113,79,0.85)', color: '#F5DFC0', backdropFilter: 'blur(4px)' }}>
+                                SG
+                              </span>
+                            )}
+                          </div>
+                          {/* Prix en overlay */}
+                          <div style={{ position: 'absolute', bottom: 10, right: 10, fontFamily: "'JetBrains Mono', monospace", fontSize: 14, fontWeight: 600, color: C.white, background: 'rgba(14,14,14,0.82)', backdropFilter: 'blur(6px)', padding: '4px 10px', borderRadius: 3, letterSpacing: '0.04em' }}>
+                            {plat.prix} Dh
+                          </div>
+                        </div>
+
+                        {/* Infos */}
+                        <div style={{ padding: '16px 18px' }}>
+                          <div style={{ fontFamily: display, fontSize: 20, fontWeight: 400, color: C.white, lineHeight: 1.2, marginBottom: 6 }}>
+                            {plat.nom}
+                          </div>
+                          {plat.description && (
+                            <div style={{ fontSize: 12, color: C.smoke, lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                              {plat.description}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
-                <div>
-                  <label className="block text-[11px] font-semibold uppercase tracking-[0.08em] text-[rgba(245,240,232,0.5)] mb-1.5">Message de motivation</label>
-                  <textarea rows={3} value={candidatureForm.message}
-                    onChange={e => setCandidatureForm(f => ({ ...f, message: e.target.value }))}
-                    className="w-full bg-[rgba(255,255,255,0.05)] border border-[rgba(255,255,255,0.1)] rounded-[8px] px-3 py-2.5 text-sm text-[#f5f0e8] placeholder-[rgba(245,240,232,0.3)] focus:outline-none focus:border-[#e8824a] resize-none" />
-                </div>
-                <div className="flex gap-3 pt-1">
-                  <button type="button" onClick={() => setActiveOffre(null)}
-                    className="flex-1 border border-[rgba(255,255,255,0.1)] text-[rgba(245,240,232,0.6)] rounded-[8px] py-2.5 text-sm hover:bg-[rgba(255,255,255,0.05)] transition-all">
-                    Annuler
-                  </button>
-                  <button type="submit"
-                    className="flex-1 bg-[#e8824a] text-black font-bold rounded-[8px] py-2.5 text-sm hover:bg-[#d4703a] transition-all">
-                    Envoyer
-                  </button>
-                </div>
-              </form>
+              </>
+            )}
+          </section>
+
+          <Footer onMenu={() => { setView('menu'); window.scrollTo(0,0) }} onResa={() => navigate('/reservation')} />
+        </>
+      )}
+
+      {/* ── MODAL RÉSERVATION ───────────────────────────────────────────────── */}
+      {menuOpen && (
+        <div
+          onClick={e => e.target === e.currentTarget && closeModal()}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 200,
+            background: 'rgba(14,14,14,0.87)', backdropFilter: 'blur(8px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 20,
+          }}
+        >
+          <div style={{
+            background: C.carbon, border: `1px solid rgba(255,255,255,0.1)`,
+            borderRadius: 4, width: '100%', maxWidth: 520, padding: 40, position: 'relative',
+          }}>
+            <button onClick={closeModal} style={{
+              position: 'absolute', top: 16, right: 16,
+              background: 'none', border: 'none', color: C.smoke, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}><X size={20} /></button>
+
+            {resaCode ? (
+              /* Confirmation */
+              <div style={{ textAlign: 'center', padding: '20px 0' }}>
+                <CheckCircle size={40} style={{ color: C.leaf, margin: '0 auto 16px' }} />
+                <h2 style={{ fontFamily: display, fontSize: 32, fontWeight: 400, color: C.white, marginBottom: 8 }}>Réservation confirmée</h2>
+                <p style={{ fontSize: 14, color: C.fog, marginBottom: 20 }}>Nous vous contacterons pour confirmer votre réservation.</p>
+                {resaCode && (
+                  <div style={{ fontFamily: mono, fontSize: 18, color: C.cedar, marginBottom: 12, letterSpacing: '0.1em' }}>{resaCode}</div>
+                )}
+                <button onClick={closeModal} style={{ fontSize: 13, color: C.smoke, background: 'none', border: 'none', cursor: 'pointer', fontFamily: body, marginTop: 8 }}>Fermer</button>
+              </div>
+            ) : (
+              /* Form */
+              <>
+                <h2 style={{ fontFamily: display, fontSize: 32, fontWeight: 400, color: C.white, marginBottom: 8 }}>Réserver une table</h2>
+                <p style={{ fontSize: 14, color: C.smoke, marginBottom: 28 }}>Nous confirmerons votre réservation sous 24h.</p>
+
+                <form onSubmit={handleResa} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <Field label="Nom complet">
+                      <input required value={resaForm.nom} placeholder="Votre nom"
+                        onChange={e => setResaForm(f => ({ ...f, nom: e.target.value }))} />
+                    </Field>
+                    <Field label="Téléphone">
+                      <input required value={resaForm.telephone} placeholder="+212 6…"
+                        onChange={e => setResaForm(f => ({ ...f, telephone: e.target.value }))} />
+                    </Field>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+                    <Field label="Date">
+                      <input required type="date" value={resaForm.date} min={new Date().toISOString().split('T')[0]}
+                        onChange={e => setResaForm(f => ({ ...f, date: e.target.value }))} />
+                    </Field>
+                    <Field label="Heure">
+                      <select value={resaForm.heure} onChange={e => setResaForm(f => ({ ...f, heure: e.target.value }))}>
+                        {TIME_SLOTS.map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    </Field>
+                    <Field label="Personnes">
+                      <select value={resaForm.personnes} onChange={e => setResaForm(f => ({ ...f, personnes: e.target.value }))}>
+                        {[1,2,3,4,5,6,7,8].map(n => <option key={n} value={n}>{n}</option>)}
+                        <option value="9">9+</option>
+                      </select>
+                    </Field>
+                  </div>
+                  <Field label="Demandes particulières (optionnel)">
+                    <textarea rows={2} value={resaForm.message} placeholder="Allergies, occasion spéciale…"
+                      onChange={e => setResaForm(f => ({ ...f, message: e.target.value }))} />
+                  </Field>
+
+                  {resaError && (
+                    <div style={{ fontSize: 13, color: '#f87171', background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)', borderRadius: 4, padding: '10px 14px' }}>{resaError}</div>
+                  )}
+
+                  <Btn primary type="submit" disabled={resaLoading} icon={resaLoading ? <Loader2 size={16} className="animate-spin" /> : <ArrowRight size={16} />} style={{ width: '100%', justifyContent: 'center', marginTop: 4 }}>
+                    {resaLoading ? 'Envoi…' : 'Confirmer la réservation'}
+                  </Btn>
+                </form>
+              </>
             )}
           </div>
         </div>
       )}
+
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        input, select, textarea {
+          background: ${C.steel}; border: 1px solid rgba(255,255,255,0.1);
+          border-radius: 2px; color: ${C.white}; font-family: ${body};
+          font-size: 14px; padding: 11px 14px; outline: none; width: 100%;
+          transition: border-color 200ms;
+        }
+        input::placeholder, textarea::placeholder { color: ${C.iron}; }
+        input:focus, select:focus, textarea:focus { border-color: ${C.cedar}; box-shadow: 0 0 0 2px rgba(160,113,79,0.2); }
+        select { appearance: none; cursor: pointer; }
+        textarea { resize: none; }
+      `}</style>
     </div>
   )
 }
 
-function SectionTitle({ title, sub }) {
+// ── Sub-components ─────────────────────────────────────────────────────────
+
+function Btn({ children, primary, onClick, icon, type = 'button', disabled, style: extraStyle }) {
+  const [hov, setHov] = useState(false)
+  const base = {
+    display: 'inline-flex', alignItems: 'center', gap: 8,
+    padding: '13px 28px', borderRadius: 4, border: 'none', cursor: disabled ? 'not-allowed' : 'pointer',
+    fontSize: 14, fontWeight: 500, letterSpacing: '0.04em',
+    fontFamily: "'DM Sans', sans-serif", transition: 'background 200ms, border-color 200ms',
+    opacity: disabled ? 0.6 : 1,
+    ...extraStyle,
+  }
+  if (primary) return (
+    <button type={type} disabled={disabled} onClick={onClick}
+      onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
+      style={{ ...base, background: hov ? '#C8966A' : '#A0714F', color: '#FFFFFF' }}>
+      {children}{icon}
+    </button>
+  )
   return (
-    <div className="text-center mb-12">
-      <h2 className="text-3xl font-bold text-[#f5f0e8]">{title}</h2>
-      {sub && <p className="text-sm text-[rgba(245,240,232,0.45)] mt-2">{sub}</p>}
-      <div className="w-10 h-0.5 mx-auto mt-4 rounded-full bg-[#e8824a]" />
+    <button type={type} disabled={disabled} onClick={onClick}
+      onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
+      style={{ ...base, background: 'transparent', color: '#FFFFFF', border: `1px solid ${hov ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.2)'}` }}>
+      {children}{icon}
+    </button>
+  )
+}
+
+function Field({ label, children }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <label style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#4A4A4A' }}>{label}</label>
+      {children}
     </div>
+  )
+}
+
+function Footer({ onMenu, onResa }) {
+  return (
+    <footer style={{ borderTop: '1px solid #2C2C2C' }}>
+      <div style={{
+        padding: '48px 80px',
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+      }}>
+        <span style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 26, color: '#FFFFFF', letterSpacing: '0.14em' }}>SKY07</span>
+        <div style={{ display: 'flex', gap: 24 }}>
+          {[
+            { label: 'menu',        action: onMenu },
+            { label: 'réservation', action: onResa },
+            { label: 'instagram',   action: () => {} },
+          ].map(({ label, action }) => (
+            <button key={label} onClick={action} style={{
+              background: 'none', border: 'none', fontSize: 12, letterSpacing: '0.08em',
+              color: '#4A4A4A', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif",
+              transition: 'color 200ms',
+            }}
+              onMouseEnter={e => e.target.style.color = '#BDBDBD'}
+              onMouseLeave={e => e.target.style.color = '#4A4A4A'}
+            >{label}</button>
+          ))}
+        </div>
+        <span style={{ fontSize: 11, color: '#4A4A4A', letterSpacing: '0.04em' }}>© 2026 SKY07</span>
+      </div>
+      <div style={{
+        padding: '12px 80px',
+        borderTop: '1px solid rgba(255,255,255,0.04)',
+        textAlign: 'center',
+      }}>
+        <span style={{ fontSize: 11, color: '#3A3A3A', letterSpacing: '0.04em', fontFamily: "'DM Sans', sans-serif" }}>
+          Développé par <span style={{ color: '#5A5A5A' }}>Yasser Lahrouni</span>
+        </span>
+      </div>
+    </footer>
   )
 }

@@ -7,7 +7,6 @@ const navItems = [
   { to: '/gerant/tables', label: 'Tables', icon: '🪑' },
   { to: '/gerant/reservations', label: 'Réservations', icon: '📅' },
   { to: '/gerant/personnel', label: 'Personnel', icon: '👥' },
-  { to: '/gerant/tombola', label: 'Tombola', icon: '🎰' },
   { to: '/gerant/settings', label: 'Paramètres', icon: '⚙️' },
 ]
 

@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getTables, toutesCommandes, changerStatutTable } from '../services/api'
+import { getTables, toutesCommandes, changerStatutTable, envoyerCuisine } from '../services/api'
 
 const STATUT_TABLE = {
   libre:    { label: 'Libre',    bg: 'bg-green-50 border-green-300',  text: 'text-green-700',  dot: 'bg-green-400'  },
@@ -31,8 +31,8 @@ export default function ServeurTables() {
     const actives = []
     c.data.forEach(cmd => {
       if (cmd.statut === 'cloturee' || cmd.statut === 'annulee') return
-      // Ignorer les commandes QR non encore payées (client encore en train de commander)
-      if (cmd.statut === 'en_cours' && cmd.origine === 'qr_table') return
+      // Ignorer les commandes QR en_cours SAUF celles avec paiement espèces en attente
+      if (cmd.statut === 'en_cours' && cmd.origine === 'qr_table' && !cmd.especes_en_attente) return
       map[cmd.table_id] = cmd
       actives.push(cmd)
     })
@@ -72,6 +72,12 @@ export default function ServeurTables() {
 
   const emplacements = [...new Set(tables.map(t => t.emplacement))]
   const commandesEnCuisine = commandesList.filter(c => ['envoyee', 'en_preparation', 'prete'].includes(c.statut))
+  const commandesEspecesEnAttente = commandesList.filter(c => c.especes_en_attente)
+
+  function ouvrirEditionQR(cmd) {
+    const tableNum = tables.find(t => t.id === cmd.table_id)?.numero ?? '?'
+    navigate(`/serveur/commande?table_id=${cmd.table_id}&table_num=${tableNum}&commande_id=${cmd.id}&edit_qr=1`)
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -84,6 +90,41 @@ export default function ServeurTables() {
             Actualiser
           </button>
         </div>
+
+        {/* ── SECTION : Commandes QR espèces à valider ── */}
+        {commandesEspecesEnAttente.length > 0 && (
+          <div className="mb-8">
+            <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-orange-400 inline-block animate-pulse" />
+              Paiement espèces — à envoyer en cuisine ({commandesEspecesEnAttente.length})
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {commandesEspecesEnAttente.map(cmd => {
+                const tableNum = tables.find(t => t.id === cmd.table_id)?.numero
+                return (
+                  <div key={cmd.id} className="bg-orange-50 border-2 border-orange-300 rounded-xl px-4 py-3 flex items-center justify-between">
+                    <div>
+                      <p className="font-bold text-sm text-gray-900 flex items-center gap-2">
+                        {cmd.code_unique ?? `CMD #${cmd.id}`}
+                        {tableNum && <span className="font-normal text-gray-500">— Table {tableNum}</span>}
+                        <span className="text-xs bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded font-medium">💵 Espèces</span>
+                      </p>
+                      <p className="text-xs text-orange-600 mt-0.5 font-medium">
+                        {cmd.montant_total ? `${cmd.montant_total} Dh` : ''} — En attente de validation
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => ouvrirEditionQR(cmd)}
+                      className="ml-3 shrink-0 bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold px-3 py-2 rounded-lg transition-colors"
+                    >
+                      Modifier & envoyer →
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
         {/* ── SECTION : Commandes en cuisine ── */}
         {commandesEnCuisine.length > 0 && (

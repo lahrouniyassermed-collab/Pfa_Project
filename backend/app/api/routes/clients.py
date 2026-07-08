@@ -24,7 +24,11 @@ from app.services.email_service import (
     envoyer_confirmation_email,
     envoyer_email_nouveau_plat,
     envoyer_email_nouveau_menu,
+    envoyer_otp,
 )
+import random
+
+# clé: email, valeur: (code, expire_ts)
 
 router_clients = APIRouter(prefix="/api/clients", tags=["Clients fidélité"])
 
@@ -235,6 +239,49 @@ def liste_clients(db: Session = Depends(get_db), _=Depends(require_role("gerant"
         "date_inscription": c.date_inscription.isoformat() if c.date_inscription else None,
     } for c in clients]
 
+
+class DemanderResetSchema(BaseModel):
+    email: str
+
+class ResetMdpSchema(BaseModel):
+    email: str
+    code: str
+    nouveau_mdp: str
+
+@router_clients.post("/demander-reset-mdp")
+def demander_reset_mdp(data: DemanderResetSchema, db: Session = Depends(get_db)):
+    client = db.query(ClientFidelite).filter(ClientFidelite.email == data.email).first()
+    if not client:
+        return {"message": "Si cet email est enregistré, un code a été envoyé."}
+    code = ''.join([str(random.randint(0, 9)) for _ in range(6)])
+    client.reset_code = code
+    client.reset_code_expiry = datetime.utcnow() + timedelta(minutes=10)
+    db.commit()
+    nom_resto = _get_nom_resto(db)
+    sent = envoyer_otp(client.prenom, data.email, code, nom_resto)
+    if not sent:
+        print(f"[RESET MDP] Code pour {data.email}: {code}")
+    return {"message": "Si cet email est enregistré, un code a été envoyé."}
+
+@router_clients.post("/reset-mdp")
+def reset_mdp(data: ResetMdpSchema, db: Session = Depends(get_db)):
+    client = db.query(ClientFidelite).filter(ClientFidelite.email == data.email).first()
+    if not client or not client.reset_code:
+        raise HTTPException(400, "Code invalide ou expiré.")
+    if datetime.utcnow() > client.reset_code_expiry:
+        client.reset_code = None
+        client.reset_code_expiry = None
+        db.commit()
+        raise HTTPException(400, "Code expiré. Recommencez.")
+    if data.code != client.reset_code:
+        raise HTTPException(400, "Code incorrect.")
+    if len(data.nouveau_mdp) < 6:
+        raise HTTPException(400, "Mot de passe trop court (6 caractères min).")
+    client.mot_de_passe = hash_password(data.nouveau_mdp)
+    client.reset_code = None
+    client.reset_code_expiry = None
+    db.commit()
+    return {"message": "Mot de passe réinitialisé avec succès."}
 
 @router_clients.post("/notifier-plat")
 def notifier_nouveau_plat(

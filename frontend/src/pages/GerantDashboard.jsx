@@ -57,7 +57,7 @@ export default function GerantDashboard() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <StatCard
           label="CA aujourd'hui"
-          value={`${data?.ca_aujourd_hui?.toFixed(2) ?? '0.00'} €`}
+          value={`${data?.ca_aujourd_hui?.toFixed(2) ?? '0.00'} Dh`}
           sub="commandes clôturées"
           color="text-amber-600"
         />
@@ -84,7 +84,7 @@ export default function GerantDashboard() {
       </div>
 
       {/* Notifications */}
-      {(data?.propositions_cuisinier_en_attente > 0 || data?.avis_en_attente > 0) && (
+      {data?.propositions_cuisinier_en_attente > 0 && (
         <div className="flex flex-wrap gap-3 mb-8">
           {data.propositions_cuisinier_en_attente > 0 && (
             <button
@@ -95,17 +95,6 @@ export default function GerantDashboard() {
                 {data.propositions_cuisinier_en_attente}
               </span>
               proposition{data.propositions_cuisinier_en_attente > 1 ? 's' : ''} cuisinier en attente
-            </button>
-          )}
-          {data.avis_en_attente > 0 && (
-            <button
-              onClick={() => navigate('/gerant/tombola')}
-              className="flex items-center gap-2 bg-purple-50 border border-purple-200 text-purple-800 text-sm px-4 py-2.5 rounded-xl hover:bg-purple-100 transition-colors"
-            >
-              <span className="w-5 h-5 bg-purple-500 text-white text-xs rounded-full flex items-center justify-center font-bold">
-                {data.avis_en_attente}
-              </span>
-              participation{data.avis_en_attente > 1 ? 's' : ''} tombola à valider
             </button>
           )}
         </div>
@@ -132,27 +121,6 @@ export default function GerantDashboard() {
           )}
         </div>
 
-        {/* Sentiments */}
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
-          <h3 className="font-semibold text-gray-900 mb-4">Sentiments tombola</h3>
-          {sentimentData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={220}>
-              <PieChart>
-                <Pie data={sentimentData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
-                  {sentimentData.map((entry) => (
-                    <Cell key={entry.name} fill={SENTIMENT_COLORS[entry.name.toLowerCase()]} />
-                  ))}
-                </Pie>
-                <Legend />
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="h-[220px] flex items-center justify-center text-gray-400 text-sm">
-              Aucun avis enregistré
-            </div>
-          )}
-        </div>
       </div>
     </div>
   )

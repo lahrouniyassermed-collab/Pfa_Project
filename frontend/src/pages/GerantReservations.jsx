@@ -137,9 +137,9 @@ export default function GerantReservations() {
           <button key={v} onClick={() => setFilter(v)}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${filter === v ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
             {l}
-            {v === 'en_attente' && reservations.filter(r => r.statut === 'en_attente').length > 0 && (
+            {v === 'en_attente' && reservations.filter(r => r.statut === 'en_attente' && !(r.type === 'local_prive' && r.mode_paiement_local === 'en_ligne')).length > 0 && (
               <span className="ml-1.5 bg-amber-500 text-white text-xs px-1.5 py-0.5 rounded-full">
-                {reservations.filter(r => r.statut === 'en_attente').length}
+                {reservations.filter(r => r.statut === 'en_attente' && !(r.type === 'local_prive' && r.mode_paiement_local === 'en_ligne')).length}
               </span>
             )}
           </button>
@@ -150,7 +150,7 @@ export default function GerantReservations() {
         <table className="w-full">
           <thead className="bg-gray-50 border-b border-gray-100">
             <tr>
-              {['Client', 'Date & heure', 'Pers.', 'Type', 'Statut', 'Code accès', 'Actions'].map(h => (
+              {['Client', 'Date & heure', 'Pers.', 'Zone / Type', 'Statut', 'Code accès', 'Actions'].map(h => (
                 <th key={h} className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide px-4 py-3">{h}</th>
               ))}
             </tr>
@@ -163,10 +163,16 @@ export default function GerantReservations() {
                   <td className="px-4 py-3">
                     <p className="font-medium text-gray-900 text-sm">{r.nom_client}</p>
                     <p className="text-xs text-gray-400">{r.telephone}</p>
+                    {r.message && <p className="text-xs text-amber-600 mt-0.5 italic">"{r.message}"</p>}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-700">{fmt(r.date_heure)}</td>
                   <td className="px-4 py-3 text-sm text-gray-700 text-center">{r.nb_personnes}</td>
                   <td className="px-4 py-3">
+                    {r.zone && (
+                      <p className="text-xs font-medium text-gray-700 mb-1">
+                        {{ salle: '🍽 Salle principale', t1: '🌬 Terrasse 1', t2: '🌿 Terrasse 2', priv: '🔒 Salle privée' }[r.zone] || r.zone}
+                      </p>
+                    )}
                     <span className={`text-xs px-2 py-1 rounded-full font-medium ${r.type === 'local_prive' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'}`}>
                       {r.type === 'local_prive' ? 'Local privé' : 'Standard'}
                     </span>
@@ -176,14 +182,28 @@ export default function GerantReservations() {
                   </td>
                   <td className="px-4 py-3 text-xs font-mono text-gray-500">{r.code_acces || '—'}</td>
                   <td className="px-4 py-3">
-                    {r.statut === 'en_attente' && (
-                      <div className="flex gap-2">
-                        <button onClick={() => confirmer(r.id)} className="text-xs font-medium text-green-600 hover:text-green-800">Confirmer</button>
-                        <button onClick={() => annuler(r.id)} className="text-xs font-medium text-red-500 hover:text-red-700">Annuler</button>
+                    {/* Salle privée payée en ligne → auto-confirmée, pas besoin d'action */}
+                    {r.type === 'local_prive' && r.mode_paiement_local === 'en_ligne' ? (
+                      <div className="flex flex-col gap-1.5">
+                        <span className="text-xs font-medium text-purple-600 bg-purple-50 px-2 py-1 rounded-full w-fit">
+                          💳 Payé Stripe
+                        </span>
+                        {r.statut !== 'annulee' && (
+                          <button onClick={() => annuler(r.id)} className="text-xs font-medium text-red-500 hover:text-red-700">Annuler</button>
+                        )}
                       </div>
-                    )}
-                    {r.statut === 'confirmee' && (
-                      <button onClick={() => annuler(r.id)} className="text-xs font-medium text-red-500 hover:text-red-700">Annuler</button>
+                    ) : (
+                      <>
+                        {r.statut === 'en_attente' && (
+                          <div className="flex gap-2">
+                            <button onClick={() => confirmer(r.id)} className="text-xs font-medium text-green-600 hover:text-green-800">Confirmer</button>
+                            <button onClick={() => annuler(r.id)} className="text-xs font-medium text-red-500 hover:text-red-700">Annuler</button>
+                          </div>
+                        )}
+                        {r.statut === 'confirmee' && (
+                          <button onClick={() => annuler(r.id)} className="text-xs font-medium text-red-500 hover:text-red-700">Annuler</button>
+                        )}
+                      </>
                     )}
                   </td>
                 </tr>

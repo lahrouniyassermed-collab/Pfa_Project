@@ -47,10 +47,9 @@ export default function GerantMenu() {
   // Modals
   const [showPlatModal, setShowPlatModal] = useState(false)
   const [editingPlat, setEditingPlat] = useState(null)
-  const [showValidModal, setShowValidModal] = useState(null) // proposition id
+  const [showValidModal, setShowValidModal] = useState(null)
   const [showCatModal, setShowCatModal] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(null)
-
   // Form state
   const [form, setForm] = useState({ nom: '', description: '', prix: '', categorie_id: '', disponible: true })
   const [ingLines, setIngLines] = useState([]) // [{ingredient_id, quantite}]
@@ -203,7 +202,7 @@ export default function GerantMenu() {
                     {p.description && <p className="text-xs text-gray-400 truncate max-w-[200px]">{p.description}</p>}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-600">{catName(p.categorie_id)}</td>
-                  <td className="px-4 py-3 text-sm font-semibold text-gray-900">{p.prix.toFixed(2)} €</td>
+                  <td className="px-4 py-3 text-sm font-semibold text-gray-900">{p.prix.toFixed(2)} Dh</td>
                   <td className="px-4 py-3">
                     <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${STATUT_BADGE[p.statut]}`}>{p.statut}</span>
                   </td>
@@ -242,7 +241,7 @@ export default function GerantMenu() {
                 <div>
                   <h3 className="font-semibold text-gray-900">{p.nom}</h3>
                   {p.description && <p className="text-sm text-gray-500 mt-0.5">{p.description}</p>}
-                  <p className="text-lg font-bold text-amber-600 mt-2">{p.prix.toFixed(2)} €</p>
+                  <p className="text-lg font-bold text-amber-600 mt-2">{p.prix.toFixed(2)} Dh</p>
                 </div>
                 <div className="flex gap-2 mt-1">
                   <button
@@ -304,7 +303,7 @@ export default function GerantMenu() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm text-gray-600 mb-1">Prix (€) *</label>
+                <label className="block text-sm text-gray-600 mb-1">Prix (Dh) *</label>
                 <input type="number" step="0.01" min="0" value={form.prix} onChange={e => setForm({ ...form, prix: e.target.value })}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400" />
               </div>
@@ -420,6 +419,7 @@ export default function GerantMenu() {
           </div>
         </Modal>
       )}
+
 
       {toast && <Toast {...toast} />}
     </div>

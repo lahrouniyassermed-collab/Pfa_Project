@@ -1,15 +1,56 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { getTableQR } from '../services/api'
-import { UtensilsCrossed, Star, Camera, MessageCircle, MapPin } from 'lucide-react'
+import { UtensilsCrossed, Star, Camera, MessageCircle, MapPin, Sun, Moon } from 'lucide-react'
+
+const LANGS = {
+  fr: {
+    tagline: 'Restaurant & Lounge Marocain',
+    bienvenue: 'Bienvenue',
+    commander: 'Voir le menu & Commander',
+    fidelite: 'Mon espace fidélité',
+    ou: 'ou',
+    whatsapp: 'Contacter sur WhatsApp',
+    footer: '© 2026 SKY07 — Tous droits réservés',
+    table: (n, e) => `Table ${n} · ${e}`,
+    dir: 'ltr',
+    emplacements: { interieur: 'Intérieur', terrasse: 'Terrasse', mezzanine: 'Mezzanine' },
+  },
+  en: {
+    tagline: 'Moroccan Restaurant & Lounge',
+    bienvenue: 'Welcome',
+    commander: 'View Menu & Order',
+    fidelite: 'My Loyalty Space',
+    ou: 'or',
+    whatsapp: 'Contact on WhatsApp',
+    footer: '© 2026 SKY07 — All rights reserved',
+    table: (n, e) => `Table ${n} · ${e}`,
+    dir: 'ltr',
+    emplacements: { interieur: 'Indoor', terrasse: 'Terrace', mezzanine: 'Mezzanine' },
+  },
+  ar: {
+    tagline: 'مطعم وصالون مغربي',
+    bienvenue: 'أهلاً وسهلاً',
+    commander: 'عرض القائمة والطلب',
+    fidelite: 'برنامج الولاء',
+    ou: 'أو',
+    whatsapp: 'تواصل عبر واتساب',
+    footer: '© 2026 SKY07 — جميع الحقوق محفوظة',
+    table: (n, e) => `طاولة ${n} · ${e}`,
+    dir: 'rtl',
+    emplacements: { interieur: 'داخلي', terrasse: 'تراس', mezzanine: 'ميزانين' },
+  },
+}
 
 export default function QRLanding() {
   const [params] = useSearchParams()
-  const navigate = useNavigate()
-  const tableId = params.get('table')
+  const navigate  = useNavigate()
+  const tableId   = params.get('table_id') || params.get('table')
 
-  const [table, setTable] = useState(null)
+  const [table,   setTable]   = useState(null)
   const [visible, setVisible] = useState(false)
+  const [lang,    setLang]    = useState(() => localStorage.getItem('sky07_lang') || 'fr')
+  const [dark,    setDark]    = useState(true)
 
   useEffect(() => {
     if (!tableId) { setTimeout(() => setVisible(true), 50); return }
@@ -19,106 +60,210 @@ export default function QRLanding() {
       .finally(() => setTimeout(() => setVisible(true), 50))
   }, [tableId])
 
-  const emplacementLabel = table?.emplacement
-    ? table.emplacement.charAt(0).toUpperCase() + table.emplacement.slice(1)
-    : ''
-  const tableLabel = table ? `Table ${table.numero} · ${emplacementLabel}` : '…'
+  const t = LANGS[lang]
+  const empl = table?.emplacement ? (t.emplacements[table.emplacement] || table.emplacement) : ''
+  const tableLabel = table ? t.table(table.numero, empl) : '…'
 
-  const btnBase = {
-    width: '100%', height: '56px', borderRadius: '12px', border: 'none',
-    fontSize: '15px', fontWeight: '600', cursor: 'pointer',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    gap: '10px', textDecoration: 'none', boxSizing: 'border-box',
-    transition: 'all 0.2s ease', fontFamily: 'inherit',
-  }
+  // Couleurs selon mode
+  const BG      = dark ? '#0a1408'           : '#faf7f2'
+  const BG2     = dark ? 'rgba(232,130,74,0.10)' : 'rgba(232,130,74,0.08)'
+  const ACCENT  = '#e8824a'
+  const TEXT    = dark ? 'rgba(245,240,232,0.9)'  : '#1a1208'
+  const MUTED   = dark ? 'rgba(245,240,232,0.35)' : 'rgba(26,18,8,0.45)'
+  const MUTED2  = dark ? 'rgba(245,240,232,0.12)' : 'rgba(26,18,8,0.1)'
+  const BORDER  = dark ? 'rgba(232,130,74,0.25)'  : 'rgba(232,130,74,0.35)'
+  const CTRL_BG = dark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)'
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      background: 'linear-gradient(160deg, #0a1408 0%, #111f0e 100%)',
-      backgroundImage: 'radial-gradient(ellipse at 50% 0%, rgba(232,130,74,0.07) 0%, transparent 60%)',
-      display: 'flex', flexDirection: 'column', alignItems: 'center',
-      justifyContent: 'center', padding: '24px',
-      opacity: visible ? 1 : 0, transition: 'opacity 0.45s ease',
-    }}>
-
-      {/* Logo */}
+    <div
+      dir={t.dir}
+      style={{
+        minHeight: '100vh', display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center',
+        padding: '40px 24px', position: 'relative', overflow: 'hidden',
+        background: BG,
+        opacity: visible ? 1 : 0, transition: 'opacity 0.5s ease, background 0.3s ease',
+        fontFamily: lang === 'ar' ? "'Noto Sans Arabic', sans-serif" : "'Playfair Display', serif",
+      }}
+    >
+      {/* Glow blobs */}
       <div style={{
-        fontFamily: "'Playfair Display', serif",
-        fontSize: '56px', fontWeight: '800', color: '#e8824a',
-        letterSpacing: '-1px', lineHeight: 1,
-        textShadow: '0 0 32px rgba(232,130,74,0.5), 0 0 80px rgba(232,130,74,0.15)',
-        marginBottom: '14px', userSelect: 'none',
-      }}>SKY07</div>
+        position: 'absolute', width: 480, height: 480, borderRadius: '50%', pointerEvents: 'none',
+        background: dark ? 'radial-gradient(circle, rgba(232,130,74,0.10) 0%, transparent 70%)' : 'radial-gradient(circle, rgba(232,130,74,0.08) 0%, transparent 70%)',
+        top: -80, left: '50%', transform: 'translateX(-50%)',
+      }} />
 
-      {/* Badge table */}
+      {/* ── Barre langue + mode ── */}
+      <div style={{
+        position: 'absolute', top: 16,
+        left: t.dir === 'rtl' ? 'auto' : 16,
+        right: t.dir === 'rtl' ? 16 : 'auto',
+        display: 'flex', gap: 6, alignItems: 'center',
+      }}>
+        {/* Toggle dark/light */}
+        <button onClick={() => setDark(d => !d)} style={{
+          background: CTRL_BG, border: `1px solid ${MUTED2}`,
+          borderRadius: 20, padding: '5px 10px', cursor: 'pointer',
+          display: 'flex', alignItems: 'center', gap: 6, color: MUTED,
+          fontSize: 12, transition: 'all 0.2s',
+        }}>
+          {dark ? <Sun size={13} /> : <Moon size={13} />}
+        </button>
+
+        {/* Langue switcher */}
+        {['fr', 'en', 'ar'].map(l => (
+          <button key={l} onClick={() => { setLang(l); localStorage.setItem('sky07_lang', l) }} style={{
+            background: lang === l ? ACCENT : CTRL_BG,
+            border: `1px solid ${lang === l ? ACCENT : MUTED2}`,
+            borderRadius: 20, padding: '5px 12px', cursor: 'pointer',
+            color: lang === l ? '#fff' : MUTED,
+            fontSize: 11, fontWeight: lang === l ? 700 : 400,
+            fontFamily: 'sans-serif', letterSpacing: '0.05em',
+            transition: 'all 0.2s',
+          }}>
+            {l.toUpperCase()}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Ornement ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 28 }}>
+        <div style={{ height: 1, width: 48, background: `linear-gradient(to ${t.dir === 'rtl' ? 'left' : 'right'}, transparent, rgba(232,130,74,0.4))` }} />
+        {[0,1,2].map(i => <div key={i} style={{ width: 6, height: 6, borderRadius: '50%', background: i===1 ? ACCENT : 'rgba(232,130,74,0.3)' }} />)}
+        <div style={{ height: 1, width: 48, background: `linear-gradient(to ${t.dir === 'rtl' ? 'right' : 'left'}, transparent, rgba(232,130,74,0.4))` }} />
+      </div>
+
+      {/* ── Logo ── */}
+      <div style={{
+        fontSize: 'clamp(56px,14vw,80px)', fontWeight: 800,
+        color: ACCENT, letterSpacing: '-1px', lineHeight: 1, marginBottom: 12,
+        textShadow: dark ? '0 0 40px rgba(232,130,74,0.45)' : '0 0 20px rgba(232,130,74,0.2)',
+        userSelect: 'none',
+      }}>
+        SKY07
+      </div>
+
+      {/* ── Tagline ── */}
+      <p style={{
+        fontStyle: 'italic', fontSize: 15, color: MUTED,
+        letterSpacing: '0.04em', marginBottom: 20, textAlign: 'center',
+        fontFamily: lang === 'ar' ? "'Noto Sans Arabic', sans-serif" : "'Playfair Display', serif",
+      }}>
+        {t.tagline}
+      </p>
+
+      {/* ── Badge table ── */}
       {tableId && (
         <div style={{
-          display: 'flex', alignItems: 'center', gap: '6px',
-          background: 'rgba(255,255,255,0.07)',
-          border: '1px solid rgba(255,255,255,0.13)',
-          borderRadius: '100px', padding: '5px 14px',
-          color: 'rgba(255,255,255,0.8)', fontSize: '13px',
-          fontWeight: '500', marginBottom: '8px',
+          display: 'flex', alignItems: 'center', gap: 8, marginBottom: 28,
+          padding: '8px 20px', borderRadius: 999,
+          background: BG2, border: `1px solid ${BORDER}`,
         }}>
-          <MapPin size={13} strokeWidth={2} />
-          {tableLabel}
+          <MapPin size={13} color={ACCENT} />
+          <span style={{ color: ACCENT, fontSize: 14, fontWeight: 600, fontFamily: 'sans-serif' }}>
+            {tableLabel}
+          </span>
         </div>
       )}
 
-      <p style={{ color: 'rgba(255,255,255,0.32)', fontSize: '13px', marginBottom: '40px', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-        Bienvenue chez SKY07
-      </p>
+      {/* ── Séparateur Bienvenue ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 28, width: '100%', maxWidth: 360 }}>
+        <div style={{ flex: 1, height: 1, background: MUTED2 }} />
+        <span style={{ fontSize: 11, letterSpacing: '0.2em', textTransform: 'uppercase', color: MUTED, fontFamily: 'sans-serif' }}>
+          {t.bienvenue}
+        </span>
+        <div style={{ flex: 1, height: 1, background: MUTED2 }} />
+      </div>
 
-      {/* Boutons */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%', maxWidth: '380px' }}>
+      {/* ── Boutons ── */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, width: '100%', maxWidth: 360 }}>
 
+        {/* Commander */}
         <button
           onClick={() => navigate(`/commande/menu?table=${tableId}`)}
-          style={{ ...btnBase, background: '#e8824a', color: '#000', boxShadow: '0 4px 24px rgba(232,130,74,0.38)' }}
-          onMouseEnter={e => { e.currentTarget.style.background = '#d4703a'; e.currentTarget.style.transform = 'scale(1.02)' }}
-          onMouseLeave={e => { e.currentTarget.style.background = '#e8824a'; e.currentTarget.style.transform = 'scale(1)' }}
+          style={{
+            height: 58, width: '100%', borderRadius: 16, border: 'none', cursor: 'pointer',
+            background: ACCENT, color: '#0a1408',
+            boxShadow: '0 6px 28px rgba(232,130,74,0.4)',
+            fontSize: 15, fontWeight: 700, letterSpacing: '0.03em',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+            fontFamily: lang === 'ar' ? "'Noto Sans Arabic', sans-serif" : 'inherit',
+            transition: 'all 0.2s',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = '#d4703a'; e.currentTarget.style.transform = 'translateY(-2px)' }}
+          onMouseLeave={e => { e.currentTarget.style.background = ACCENT; e.currentTarget.style.transform = 'translateY(0)' }}
         >
-          <UtensilsCrossed size={18} strokeWidth={2.5} />
-          <span>Voir le menu &amp; Commander</span>
+          <UtensilsCrossed size={19} />
+          {t.commander}
         </button>
 
-        <div style={{ height: '1px', background: 'rgba(255,255,255,0.06)', margin: '2px 0' }} />
-
-        <a href="/client/login" style={{ ...btnBase, background: 'transparent', color: '#e8824a', border: '1.5px solid rgba(232,130,74,0.5)' }}
-          onMouseEnter={e => { e.currentTarget.style.borderColor = '#e8824a'; e.currentTarget.style.background = 'rgba(232,130,74,0.06)' }}
-          onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(232,130,74,0.5)'; e.currentTarget.style.background = 'transparent' }}
+        {/* Fidélité */}
+        <a href="/client/login" style={{
+          height: 52, width: '100%', borderRadius: 16,
+          background: 'transparent', color: ACCENT,
+          border: `1.5px solid ${BORDER}`, textDecoration: 'none',
+          fontSize: 14, fontWeight: 600,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+          fontFamily: lang === 'ar' ? "'Noto Sans Arabic', sans-serif" : 'inherit',
+          transition: 'all 0.2s',
+        }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'rgba(232,130,74,0.08)' }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
         >
-          <Star size={18} strokeWidth={2} />
-          <span>Mon espace fidélité</span>
+          <Star size={17} />
+          {t.fidelite}
         </a>
 
-        <a href="https://www.instagram.com/sky07restaurant" target="_blank" rel="noopener noreferrer"
-          style={{ ...btnBase, background: 'transparent', color: 'rgba(255,255,255,0.75)', border: '1.5px solid rgba(255,255,255,0.18)' }}
-          onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.4)'; e.currentTarget.style.color = '#fff' }}
-          onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.18)'; e.currentTarget.style.color = 'rgba(255,255,255,0.75)' }}
+        {/* Séparateur */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '4px 0' }}>
+          <div style={{ flex: 1, height: 1, background: MUTED2 }} />
+          <span style={{ fontSize: 11, color: MUTED, fontFamily: 'sans-serif' }}>{t.ou}</span>
+          <div style={{ flex: 1, height: 1, background: MUTED2 }} />
+        </div>
+
+        {/* Instagram */}
+        <a href="https://www.instagram.com/sky07restaurant" target="_blank" rel="noopener noreferrer" style={{
+          height: 48, width: '100%', borderRadius: 16,
+          background: 'transparent', color: MUTED,
+          border: `1px solid ${MUTED2}`, textDecoration: 'none',
+          fontSize: 13, fontWeight: 500,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+          transition: 'all 0.2s',
+        }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = MUTED; e.currentTarget.style.color = TEXT }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = MUTED2; e.currentTarget.style.color = MUTED }}
         >
-          <Camera size={18} strokeWidth={2} />
-          <span>Instagram SKY07</span>
+          <Camera size={16} />
+          @sky07restaurant
         </a>
 
-        <a href="https://wa.me/212600000000" target="_blank" rel="noopener noreferrer"
-          style={{ ...btnBase, background: '#25D366', color: '#fff', boxShadow: '0 4px 16px rgba(37,211,102,0.25)' }}
-          onMouseEnter={e => { e.currentTarget.style.background = '#1fba58'; e.currentTarget.style.transform = 'scale(1.02)' }}
-          onMouseLeave={e => { e.currentTarget.style.background = '#25D366'; e.currentTarget.style.transform = 'scale(1)' }}
+        {/* WhatsApp */}
+        <a href="https://wa.me/212530450523" target="_blank" rel="noopener noreferrer" style={{
+          height: 48, width: '100%', borderRadius: 16,
+          background: '#25D366', color: '#fff',
+          boxShadow: '0 4px 18px rgba(37,211,102,0.22)',
+          textDecoration: 'none', fontSize: 13, fontWeight: 600,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+          fontFamily: lang === 'ar' ? "'Noto Sans Arabic', sans-serif" : 'inherit',
+          transition: 'all 0.2s',
+        }}
+          onMouseEnter={e => { e.currentTarget.style.background = '#1fba58'; e.currentTarget.style.transform = 'translateY(-1px)' }}
+          onMouseLeave={e => { e.currentTarget.style.background = '#25D366'; e.currentTarget.style.transform = 'translateY(0)' }}
         >
-          <MessageCircle size={18} strokeWidth={2} />
-          <span>WhatsApp</span>
+          <MessageCircle size={16} />
+          {t.whatsapp}
         </a>
       </div>
 
-      {/* Footer */}
-      <div style={{ marginTop: '48px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
-        <a href="/" style={{ color: 'rgba(255,255,255,0.2)', fontSize: '12px', textDecoration: 'none' }}>
-          Landing page
-        </a>
-        <p style={{ color: 'rgba(255,255,255,0.12)', fontSize: '11px', margin: 0 }}>
-          © 2026 SKY07 — Tous droits réservés
+      {/* ── Footer ── */}
+      <div style={{ marginTop: 40, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ height: 1, width: 32, background: MUTED2 }} />
+          <div style={{ width: 4, height: 4, borderRadius: '50%', background: 'rgba(232,130,74,0.3)' }} />
+          <div style={{ height: 1, width: 32, background: MUTED2 }} />
+        </div>
+        <p style={{ fontSize: 11, color: MUTED2, letterSpacing: '0.06em', fontFamily: 'sans-serif', textAlign: 'center' }}>
+          {t.footer}
         </p>
       </div>
     </div>

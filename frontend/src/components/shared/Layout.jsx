@@ -52,26 +52,52 @@ function NotifBell() {
       </button>
 
       {open && (
-        <div className="absolute left-full top-0 ml-2 w-80 bg-white rounded-xl shadow-2xl border border-gray-100 z-50">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-            <span className="font-semibold text-gray-900 text-sm">Notifications</span>
+        <div className="absolute left-full bottom-0 ml-2 w-96 bg-white rounded-xl shadow-2xl border border-gray-200 z-50 flex flex-col" style={{ maxHeight: '80vh' }}>
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 shrink-0">
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-gray-900 text-sm">Notifications</span>
+              {count > 0 && (
+                <span className="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">{count}</span>
+              )}
+            </div>
             {count > 0 && (
-              <button onClick={lireTout} className="text-xs text-gray-400 hover:text-gray-600">Tout marquer lu</button>
+              <button onClick={lireTout} className="text-xs text-blue-500 hover:text-blue-700 font-medium">Tout effacer</button>
             )}
           </div>
-          <div className="max-h-72 overflow-y-auto">
+
+          {/* Liste */}
+          <div className="overflow-y-auto flex-1">
             {notifs.length === 0 ? (
-              <p className="text-xs text-gray-400 text-center py-6">Aucune notification</p>
-            ) : notifs.map(n => (
-              <div key={n.id} className="flex items-start gap-3 px-4 py-3 border-b border-gray-50 hover:bg-gray-50">
-                <span className="text-lg mt-0.5">{n.type === 'annulation' ? '❌' : 'ℹ️'}</span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs text-gray-800 font-medium">{n.message}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">{new Date(n.date_heure).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</p>
-                </div>
-                <button onClick={() => marquerNotifLue(n.id).then(load)} className="text-gray-300 hover:text-gray-500 text-xs">✕</button>
+              <div className="flex flex-col items-center justify-center py-10 text-gray-400">
+                <span className="text-3xl mb-2">🔔</span>
+                <p className="text-sm">Aucune notification</p>
               </div>
-            ))}
+            ) : notifs.map(n => {
+              const isAnnulation = n.type === 'annulation'
+              return (
+                <div key={n.id}
+                  style={{ borderLeft: `4px solid ${isAnnulation ? '#EF4444' : '#3B82F6'}` }}
+                  className="flex items-start gap-3 px-4 py-3 border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                  <span className="text-xl shrink-0 mt-0.5">{isAnnulation ? '❌' : 'ℹ️'}</span>
+                  <div className="flex-1 min-w-0">
+                    <span className={`inline-block text-xs font-bold px-2 py-0.5 rounded-full mb-1 ${isAnnulation ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>
+                      {isAnnulation ? 'Annulation' : 'Info'}
+                    </span>
+                    <p className="text-xs text-gray-800 leading-relaxed">{n.message}</p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      {new Date(n.date_heure).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}
+                      {' à '}
+                      {new Date(n.date_heure).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  </div>
+                  <button onClick={() => marquerNotifLue(n.id).then(load)}
+                    className="shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-gray-300 hover:bg-red-100 hover:text-red-500 transition-colors text-xs mt-0.5">
+                    ✕
+                  </button>
+                </div>
+              )
+            })}
           </div>
         </div>
       )}
@@ -135,11 +161,20 @@ const GERANT_NAV = [
     ),
   },
   {
-    to: '/gerant/tombola', label: 'Tombola',
+    to: '/gerant/revenues', label: 'Revenus',
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
-          d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
+          d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+      </svg>
+    ),
+  },
+  {
+    to: '/gerant/spins', label: 'Roue — Spins',
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
+          d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
       </svg>
     ),
   },

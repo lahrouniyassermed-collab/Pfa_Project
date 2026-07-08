@@ -39,6 +39,13 @@ function StockBar({ current, seuil }) {
 
 const EMPTY_FORM = { nom: '', quantite_stock: '', seuil_alerte: '', unite: '' }
 
+const UNITES_PIECES = ['unites', 'bouteilles', 'pieces', 'pièces', 'unités']
+function formatQte(qte, unite) {
+  if (!qte && qte !== 0) return '—'
+  if (unite && UNITES_PIECES.includes(unite.toLowerCase())) return Math.round(qte)
+  return parseFloat(qte.toFixed(2))
+}
+
 export default function GerantIngredients() {
   const [ingredients, setIngredients] = useState([])
   const [loading, setLoading] = useState(true)
@@ -162,7 +169,7 @@ export default function GerantIngredients() {
                 <td className="px-4 py-3">
                   <div>
                     <span className={`font-semibold text-sm ${alerte(ing) ? 'text-red-600' : 'text-gray-900'}`}>
-                      {ing.quantite_stock}
+                      {formatQte(ing.quantite_stock, ing.unite)}
                     </span>
                     <StockBar current={ing.quantite_stock} seuil={ing.seuil_alerte} />
                   </div>

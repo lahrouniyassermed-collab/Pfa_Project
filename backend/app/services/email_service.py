@@ -1,32 +1,30 @@
 """
-Service email — Resend API
-Templates : confirmation, tombola, nouveau plat, retour client, anniversaire, nouveau menu
+Service email — Gmail SMTP + Resend fallback
 """
-import resend
+import smtplib, ssl
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from app.core.config import settings
-
-resend.api_key = settings.RESEND_API_KEY
-
-# Sans domaine vérifié → utiliser l'adresse de test Resend
-# Avec domaine vérifié → remplacer par ex: "MangerManger <noreply@mangermanger.ma>"
-EXPEDITEUR = "onboarding@resend.dev"
 
 
 def _envoyer(destinataire: str, sujet: str, html: str) -> bool:
-    """Envoie un email via Resend. Retourne True si succès."""
-    if not settings.RESEND_API_KEY:
-        print(f"[EMAIL] Clé Resend manquante — email non envoyé à {destinataire}")
+    if not settings.SMTP_USER or not settings.SMTP_PASSWORD:
+        print(f"[EMAIL] SMTP non configuré — code affiché en console")
         return False
     try:
-        resend.Emails.send({
-            "from": EXPEDITEUR,
-            "to": destinataire,
-            "subject": sujet,
-            "html": html,
-        })
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = sujet
+        msg["From"] = f"SKY07 <{settings.SMTP_USER}>"
+        msg["To"] = destinataire
+        msg.attach(MIMEText(html, "html"))
+        ctx = ssl.create_default_context()
+        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT) as server:
+            server.starttls(context=ctx)
+            server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
+            server.sendmail(settings.SMTP_USER, destinataire, msg.as_string())
         return True
     except Exception as e:
-        print(f"[EMAIL] Erreur Resend : {e}")
+        print(f"[EMAIL] Erreur SMTP : {e}")
         return False
 
 
@@ -169,3 +167,40 @@ def envoyer_email_nouveau_menu(prenom: str, email: str, message: str,
     </p>
     """
     return _envoyer(email, "Nouveau menu cette semaine", _base_html(contenu, nom_resto))
+
+
+# ── 7. Code OTP vérification téléphone ────────────────────────────────────
+
+def envoyer_otp(prenom: str, email: str, code: str, nom_resto: str) -> bool:
+    contenu = f"""
+    <h2 style="font-size: 22px; font-weight: 600; margin-bottom: 16px;">
+      Vérification de votre numéro
+    </h2>
+    <p style="font-size: 15px; line-height: 1.6; color: #444;">Bonjour {prenom},</p>
+    <p style="font-size: 15px; line-height: 1.6; color: #444;">
+      Votre code de vérification est :
+    </p>
+    <div style="text-align: center; margin: 32px 0;">
+      <span style="font-size: 42px; font-weight: 700; letter-spacing: 12px;
+                   color: #1a1a1a; font-family: monospace;">{code}</span>
+    </div>
+    <p style="font-size: 13px; color: #999;">Ce code expire dans 10 minutes.</p>
+    """
+    return _envoyer(email, f"Votre code de vérification {nom_resto}", _base_html(contenu, nom_resto))
+
+
+# ── 8. Bienvenue parrainage ────────────────────────────────────────────────
+
+def envoyer_email_parrainage(prenom: str, email: str, parrain_prenom: str,
+                              points_gagnes: int, nom_resto: str) -> bool:
+    contenu = f"""
+    <h2 style="font-size: 22px; font-weight: 600; margin-bottom: 16px;">
+      Bienvenue chez {nom_resto} !
+    </h2>
+    <p style="font-size: 15px; line-height: 1.6; color: #444;">Bonjour {prenom},</p>
+    <p style="font-size: 15px; line-height: 1.6; color: #444;">
+      <strong>{parrain_prenom}</strong> vous a invité(e) à rejoindre notre programme fidélité.<br>
+      <strong>{points_gagnes} points</strong> ont été crédités sur votre compte.
+    </p>
+    """
+    return _envoyer(email, f"Bienvenue — {points_gagnes} points offerts !", _base_html(contenu, nom_resto))

@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Enum, ForeignKey, Text
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, backref
 from sqlalchemy.sql import func
 from app.core.database import Base
 import enum
@@ -25,6 +25,10 @@ class StatutCommandeEnum(str, enum.Enum):
     prete = "prete"
     cloturee = "cloturee"
     annulee = "annulee"
+    annulee_partielle = "annulee_partielle"
+    # Statuts ligne uniquement
+    rupture = "rupture"
+    remplacee = "remplacee"
 
 class OrigineCommandeEnum(str, enum.Enum):
     serveur = "serveur"
@@ -60,6 +64,8 @@ class StatutPaiementEnum(str, enum.Enum):
     en_attente = "en_attente"
     valide = "valide"
     rembourse = "rembourse"
+    rembourse_partiel = "rembourse_partiel"
+    impaye = "impaye"
 
 class StatutAvisEnum(str, enum.Enum):
     en_attente = "en_attente"
@@ -98,8 +104,9 @@ class Employe(Base):
     date_embauche = Column(DateTime, server_default=func.now())
     actif = Column(Boolean, default=True)
 
-    afficher_landing = Column(Boolean, default=False)   # apparaît sur la landing page
-    photo_url = Column(String(500), default="")          # photo profil (optionnel)
+    afficher_landing = Column(Boolean, default=False)
+    photo_url = Column(String(500), default="")
+    email = Column(String(200), nullable=True)
 
     commandes = relationship("Commande", back_populates="employe", foreign_keys="Commande.employe_id")
     plats_proposes = relationship("Plat", back_populates="propose_par")
@@ -124,6 +131,13 @@ class Ingredient(Base):
     seuil_alerte = Column(Float, default=0)
     unite = Column(String(20))  # kg, L, pièces...
 
+    # Valeurs nutritionnelles pour 100g/100ml
+    calories_par_100g    = Column(Float, nullable=True)
+    proteines_par_100g   = Column(Float, nullable=True)
+    glucides_par_100g    = Column(Float, nullable=True)
+    lipides_par_100g     = Column(Float, nullable=True)
+    fibres_par_100g      = Column(Float, nullable=True)
+
     plats = relationship("PlatIngredient", back_populates="ingredient")
 
 
@@ -141,11 +155,17 @@ class Plat(Base):
     propose_par_id = Column(Integer, ForeignKey("employes.id"), nullable=True)
     motif_refus = Column(Text, nullable=True)
 
+    # Filtres menu
+    vegetarien    = Column(Boolean, default=False)
+    sans_gluten   = Column(Boolean, default=False)
+    allergenes    = Column(String(300), nullable=True)  # ex: "gluten,lactose,noix"
+
     categorie_id = Column(Integer, ForeignKey("categories.id"))
     categorie = relationship("Categorie", back_populates="plats")
     propose_par = relationship("Employe", back_populates="plats_proposes")
     ingredients = relationship("PlatIngredient", back_populates="plat")
     lignes = relationship("LigneCommande", back_populates="plat")
+    nutrition = relationship("NutritionFact", back_populates="plat", uselist=False)
 
 
 class PlatIngredient(Base):
@@ -365,7 +385,14 @@ class ClientFidelite(Base):
     email          = Column(String(200), unique=True, nullable=False, index=True)
     mot_de_passe   = Column(String(255), nullable=False)
     telephone      = Column(String(20), nullable=True, index=True)
-    
+    telephone_valide = Column(Boolean, default=False)
+    photo_url      = Column(String(500), nullable=True)
+
+    # Parrainage
+    code_parrainage  = Column(String(20), unique=True, nullable=True, index=True)
+    nb_parrainages   = Column(Integer, default=0)
+    parrain_id       = Column(Integer, ForeignKey("clients_fidelite.id"), nullable=True)
+
     points_solde   = Column(Integer, default=0)
     date_inscription = Column(DateTime, server_default=func.now())
     derniere_activite = Column(DateTime, server_default=func.now())
@@ -388,7 +415,15 @@ class ClientFidelite(Base):
     montant_total  = Column(Float, default=0)
     qr_token       = Column(String(100), unique=True, index=True)
 
-    gains = relationship("GainSpin", back_populates="client")
+    reset_code        = Column(String(6), nullable=True)
+    reset_code_expiry = Column(DateTime, nullable=True)
+
+    gains    = relationship("GainSpin", back_populates="client")
+    filleuls = relationship(
+        "ClientFidelite",
+        foreign_keys="[ClientFidelite.parrain_id]",
+        backref=backref("parrain", remote_side="ClientFidelite.id")
+    )
 
 
 class PrixRoue(Base):
@@ -433,6 +468,17 @@ class ConfigFidelite(Base):
     points_avis_google = Column(Integer, default=50)
 
 
+class OTPVerification(Base):
+    __tablename__ = "otp_verifications"
+
+    id         = Column(Integer, primary_key=True)
+    client_id  = Column(Integer, ForeignKey("clients_fidelite.id"), nullable=False)
+    code       = Column(String(6), nullable=False)
+    expire_at  = Column(DateTime, nullable=False)
+    utilise    = Column(Boolean, default=False)
+    tentatives = Column(Integer, default=0)
+
+
 class TokenConfirmationEmail(Base):
     __tablename__ = "tokens_confirmation_email"
 
@@ -463,6 +509,50 @@ class Notification(Base):
     type       = Column(String(50), default="info")   # info | alerte | annulation
     lu         = Column(Boolean, default=False)
     date_heure = Column(DateTime, server_default=func.now())
+
+
+class NutritionFact(Base):
+    __tablename__ = "nutrition_facts"
+
+    id           = Column(Integer, primary_key=True, index=True)
+    plat_id      = Column(Integer, ForeignKey("plats.id"), unique=True, nullable=False)
+    taille_portion = Column(Float, default=100)   # en grammes
+    calories     = Column(Float, default=0)
+    proteines    = Column(Float, default=0)
+    glucides     = Column(Float, default=0)
+    lipides      = Column(Float, default=0)
+    fibres       = Column(Float, default=0)
+    sucre        = Column(Float, default=0)
+    sodium       = Column(Float, default=0)
+    calcul_auto  = Column(Boolean, default=False)  # calculé depuis ingrédients ou saisi manuellement
+
+    plat = relationship("Plat", back_populates="nutrition")
+
+
+class ModificationCommande(Base):
+    __tablename__ = "modifications_commande"
+
+    id           = Column(Integer, primary_key=True, index=True)
+    commande_id  = Column(Integer, ForeignKey("commandes.id"), nullable=False)
+    ligne_id     = Column(Integer, ForeignKey("lignes_commande.id"), nullable=True)
+    type         = Column(String(50), nullable=False)   # ajout|suppression|note|remplacement|rupture|mauvaise_table|annulation
+    effectue_par = Column(String(20), nullable=False)   # client|serveur|gerant|cuisinier
+    description  = Column(Text)
+    montant_delta= Column(Float, default=0)             # négatif=remboursement, positif=supplément
+    stripe_action= Column(String(200))                  # refund_id ou payment_intent_id
+    created_at   = Column(DateTime, server_default=func.now())
+
+
+class KDSAlerte(Base):
+    __tablename__ = "kds_alertes"
+
+    id          = Column(Integer, primary_key=True, index=True)
+    commande_id = Column(Integer, ForeignKey("commandes.id"), nullable=True)
+    ligne_id    = Column(Integer, ForeignKey("lignes_commande.id"), nullable=True)
+    type        = Column(String(50), nullable=False)   # rupture|annulation|note_modifiee|mauvaise_table|ajout
+    message     = Column(String(500), nullable=False)
+    acquittee   = Column(Boolean, default=False)
+    created_at  = Column(DateTime, server_default=func.now())
 
 
 class AvisClient(Base):

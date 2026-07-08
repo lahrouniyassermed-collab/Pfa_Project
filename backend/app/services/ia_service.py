@@ -69,6 +69,10 @@ def _get_sentiment_pipeline():
     global _sentiment_pipeline
     if _sentiment_pipeline is None:
         from transformers import pipeline
+        from app.core.config import settings
+        if settings.HF_TOKEN:
+            os.environ["HF_TOKEN"] = settings.HF_TOKEN
+            os.environ["HUGGING_FACE_HUB_TOKEN"] = settings.HF_TOKEN
         _sentiment_pipeline = pipeline(
             "sentiment-analysis",
             model="cardiffnlp/twitter-xlm-roberta-base-sentiment",
@@ -76,7 +80,7 @@ def _get_sentiment_pipeline():
         )
     return _sentiment_pipeline
 
-async def analyser_sentiment(texte: str) -> str:
+def analyser_sentiment(texte: str) -> str:
     """
     Retourne "positif", "neutre", ou "negatif"
     Modèle : cardiffnlp/twitter-xlm-roberta-base-sentiment

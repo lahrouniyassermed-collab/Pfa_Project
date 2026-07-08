@@ -11,10 +11,10 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    return pwd_context.hash(password.encode("utf-8")[:72].decode("utf-8", errors="ignore"))
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    return pwd_context.verify(plain.encode("utf-8")[:72].decode("utf-8", errors="ignore"), hashed)
 
 def create_access_token(data: dict) -> str:
     to_encode = data.copy()

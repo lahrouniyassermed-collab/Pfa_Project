@@ -2,9 +2,36 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
+import requests as http
 from app.core.database import get_db
 from app.core.security import require_role
 from app.models.models import Ingredient, Categorie
+
+
+def _fetch_openfoodfacts(nom: str) -> dict:
+    """Récupère les valeurs nutritionnelles pour 100g via Open Food Facts."""
+    try:
+        url = "https://world.openfoodfacts.org/cgi/search.pl"
+        r = http.get(url, params={
+            "search_terms": nom,
+            "fields": "nutriments",
+            "json": "true",
+            "page_size": 1,
+        }, timeout=5)
+        r.raise_for_status()
+        products = r.json().get("products", [])
+        if not products:
+            return {}
+        n = products[0].get("nutriments", {})
+        return {
+            "calories_par_100g":  n.get("energy-kcal_100g") or n.get("energy_100g"),
+            "proteines_par_100g": n.get("proteins_100g"),
+            "glucides_par_100g":  n.get("carbohydrates_100g"),
+            "lipides_par_100g":   n.get("fat_100g"),
+            "fibres_par_100g":    n.get("fiber_100g"),
+        }
+    except Exception:
+        return {}
 
 router_ingredients = APIRouter(prefix="/api/ingredients", tags=["Ingrédients"])
 router_categories = APIRouter(prefix="/api/categories", tags=["Catégories"])
@@ -53,6 +80,11 @@ def liste_ingredients(db: Session = Depends(get_db), _=Depends(require_role("ger
 @router_ingredients.post("/")
 def creer_ingredient(data: IngredientCreate, db: Session = Depends(get_db), _=Depends(require_role("gerant"))):
     ing = Ingredient(**data.model_dump())
+    # Auto-fetch nutrition from Open Food Facts
+    nutrition = _fetch_openfoodfacts(data.nom)
+    for k, v in nutrition.items():
+        if v is not None:
+            setattr(ing, k, float(v))
     db.add(ing)
     db.commit()
     db.refresh(ing)

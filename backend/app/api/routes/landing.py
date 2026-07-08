@@ -287,25 +287,44 @@ def deposer_avis(data: AvisClientCreate, db: Session = Depends(get_db)):
     if not info:
         raise HTTPException(404, "Restaurant non configuré.")
 
-    # Analyse sentiment automatique
+    # Analyse sentiment automatique → validation automatique
     sentiment = None
+    statut = StatutAvisEnum.en_attente
     try:
         from app.services.ia_service import analyser_sentiment
         if data.commentaire:
-            res = analyser_sentiment(data.commentaire)
-            sentiment = SentimentEnum(res["sentiment"])
-    except Exception:
-        pass
+            label = analyser_sentiment(data.commentaire)
+            sentiment = SentimentEnum(label)
+            if label == "positif":
+                statut = StatutAvisEnum.valide
+            else:
+                statut = StatutAvisEnum.rejete
+    except Exception as e:
+        print(f"[Avis] Sentiment échoué : {e}")
 
     avis = AvisClient(
         nom=data.nom,
         note=data.note,
         commentaire=data.commentaire,
         sentiment=sentiment,
+        statut=statut,
         restaurant_id=info.id,
     )
     db.add(avis)
     db.commit()
+
+    # Max 6 avis validés : supprimer le plus ancien si dépassé
+    if statut == StatutAvisEnum.valide:
+        avis_valides = db.query(AvisClient).filter(
+            AvisClient.restaurant_id == info.id,
+            AvisClient.statut == StatutAvisEnum.valide
+        ).order_by(AvisClient.date_depot.asc()).all()
+        if len(avis_valides) > 6:
+            db.delete(avis_valides[0])
+            db.commit()
+        return {"message": "Merci pour votre avis ! Il est maintenant visible sur la page."}
+    elif statut == StatutAvisEnum.rejete:
+        return {"message": "Merci pour votre retour. Votre avis a été pris en compte."}
     return {"message": "Avis envoyé, en attente de validation."}
 
 @router_avis_clients.get("/admin")

@@ -15,8 +15,9 @@ import GerantIngredients from './pages/GerantIngredients'
 import GerantTables from './pages/GerantTables'
 import GerantReservations from './pages/GerantReservations'
 import GerantPersonnel from './pages/GerantPersonnel'
-import GerantTombola from './pages/GerantTombola'
 import GerantSettings from './pages/GerantSettings'
+import GerantRevenues from './pages/GerantRevenues'
+import GerantSpins from './pages/GerantSpins'
 
 // Serveur
 import ServeurTables from './pages/ServeurTables'
@@ -29,11 +30,17 @@ import CuisinierProposer from './pages/CuisinierProposer'
 // Client Fidélité
 import ClientLogin from './pages/ClientLogin'
 import ClientDashboard from './pages/ClientDashboard'
+import SpinWheel from './pages/SpinWheel'
+import PhoneVerification from './pages/PhoneVerification'
+import ParrainagePage from './pages/ParrainagePage'
+import ReservationClient from './pages/ReservationClient'
+import GoogleAvisPage from './pages/GoogleAvisPage'
+import ClientLayout from './components/shared/ClientLayout'
 
 function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Routes>
           {/* Public */}
           <Route path="/" element={<LandingPage />} />
@@ -46,13 +53,21 @@ function App() {
           <Route path="/client" element={<Navigate to="/client/dashboard" replace />} />
           <Route path="/client/login" element={<ClientLogin />} />
           <Route
-            path="/client/dashboard"
+            path="/client"
             element={
               <ProtectedRoute roles={['client']}>
-                <ClientDashboard />
+                <ClientLayout />
               </ProtectedRoute>
             }
-          />
+          >
+            <Route path="dashboard"    element={<ClientDashboard />} />
+            <Route path="roue"         element={<SpinWheel />} />
+            <Route path="verification" element={<PhoneVerification />} />
+            <Route path="parrainage"   element={<ParrainagePage />} />
+            <Route path="reservation"  element={<ReservationClient />} />
+            <Route path="avis-google"  element={<GoogleAvisPage />} />
+          </Route>
+          <Route path="/reservation" element={<ReservationClient />} />
 
           {/* Gérant */}
           <Route
@@ -69,8 +84,9 @@ function App() {
             <Route path="tables" element={<GerantTables />} />
             <Route path="reservations" element={<GerantReservations />} />
             <Route path="personnel" element={<GerantPersonnel />} />
-            <Route path="tombola" element={<GerantTombola />} />
             <Route path="settings" element={<GerantSettings />} />
+            <Route path="revenues" element={<GerantRevenues />} />
+            <Route path="spins" element={<GerantSpins />} />
           </Route>
 
           {/* Serveur */}

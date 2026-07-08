@@ -30,7 +30,7 @@ function PlatCard({ plat }) {
         <div className="absolute top-3 right-3 px-3 py-1.5"
           style={{ background:`linear-gradient(135deg,${A},#c9673a)` }}>
           <span className="text-xs font-semibold" style={{ color:'#0a1408', fontFamily:"'Inter',sans-serif" }}>
-            {plat.prix} MAD
+            {plat.prix} Dh
           </span>
         </div>
       </div>

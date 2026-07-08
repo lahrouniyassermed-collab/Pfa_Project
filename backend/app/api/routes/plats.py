@@ -4,8 +4,38 @@ from typing import List, Optional
 from pydantic import BaseModel
 from app.core.database import get_db
 from app.core.security import get_current_user, require_role
-from app.models.models import Plat, Categorie, Ingredient, PlatIngredient, StatutPlatEnum, RoleEnum
+from app.models.models import Plat, Categorie, Ingredient, PlatIngredient, NutritionFact, StatutPlatEnum, RoleEnum
 import aiofiles, os, uuid
+
+
+def _auto_nutrition(plat_id: int, db: Session):
+    """Calcule et sauvegarde automatiquement les valeurs nutritionnelles depuis les ingrédients."""
+    liaisons = db.query(PlatIngredient).filter(PlatIngredient.plat_id == plat_id).all()
+    if not liaisons:
+        return
+    cal = prot = gluc = lip = fib = 0.0
+    has_data = False
+    for l in liaisons:
+        ing = db.query(Ingredient).filter(Ingredient.id == l.ingredient_id).first()
+        if not ing or ing.calories_par_100g is None:
+            continue
+        has_data = True
+        ratio = l.quantite / 100.0
+        cal  += (ing.calories_par_100g  or 0) * ratio
+        prot += (ing.proteines_par_100g or 0) * ratio
+        gluc += (ing.glucides_par_100g  or 0) * ratio
+        lip  += (ing.lipides_par_100g   or 0) * ratio
+        fib  += (ing.fibres_par_100g    or 0) * ratio
+    if not has_data:
+        return
+    n = db.query(NutritionFact).filter(NutritionFact.plat_id == plat_id).first()
+    if not n:
+        n = NutritionFact(plat_id=plat_id)
+        db.add(n)
+    n.calories = round(cal, 1); n.proteines = round(prot, 1)
+    n.glucides  = round(gluc, 1); n.lipides  = round(lip, 1)
+    n.fibres    = round(fib, 1);  n.calcul_auto = True
+    db.commit()
 
 router = APIRouter(prefix="/api/plats", tags=["Plats"])
 UPLOAD_DIR = "uploads/plats"
@@ -21,6 +51,9 @@ class PlatCreate(BaseModel):
     description: Optional[str] = None
     prix: float
     categorie_id: int
+    vegetarien: bool = False
+    sans_gluten: bool = False
+    allergenes: Optional[str] = None
     ingredients: List[IngredientQuantite] = []
 
 class PlatUpdate(BaseModel):
@@ -46,16 +79,32 @@ def get_menu_public(db: Session = Depends(get_db)):
 
 @router.get("/categories")
 def get_menu_par_categorie(db: Session = Depends(get_db)):
-    """Menu groupé par catégorie pour la landing page"""
+    """Menu groupé par catégorie — inclut nutrition + filtres."""
+    from app.models.models import NutritionFact
     categories = db.query(Categorie).order_by(Categorie.ordre).all()
     result = []
     for cat in categories:
         plats = db.query(Plat).filter(
             Plat.categorie_id == cat.id,
             Plat.statut == StatutPlatEnum.valide,
-            Plat.disponible == True
+            Plat.disponible == True,
         ).all()
-        result.append({"categorie": cat, "plats": plats})
+        plats_data = []
+        for p in plats:
+            n = db.query(NutritionFact).filter(NutritionFact.plat_id == p.id).first()
+            plats_data.append({
+                "id": p.id, "nom": p.nom, "description": p.description,
+                "prix": p.prix, "image": p.image, "disponible": p.disponible,
+                "vegetarien": bool(p.vegetarien), "sans_gluten": bool(p.sans_gluten),
+                "allergenes": p.allergenes or "",
+                "nutrition": {
+                    "calories": round(n.calories, 1), "proteines": round(n.proteines, 1),
+                    "glucides": round(n.glucides, 1),  "lipides": round(n.lipides, 1),
+                    "fibres":   round(n.fibres, 1),    "sucre":   round(n.sucre, 1),
+                    "sodium":   round(n.sodium, 1),    "taille_portion": n.taille_portion,
+                } if n else None,
+            })
+        result.append({"id": cat.id, "nom": cat.nom, "plats": plats_data})
     return result
 
 # ── Gérant : gestion complète ─────────────────────────────
@@ -79,7 +128,18 @@ def creer_plat_gerant(plat_data: PlatCreate, db: Session = Depends(get_db), user
         db.add(PlatIngredient(plat_id=plat.id, ingredient_id=ing.ingredient_id, quantite=ing.quantite))
     db.commit()
     db.refresh(plat)
+    _auto_nutrition(plat.id, db)
     return plat
+
+
+@router.delete("/admin/tout")
+def supprimer_tous_plats(db: Session = Depends(get_db), _=Depends(require_role("gerant"))):
+    """Supprime TOUS les plats (et leurs ingrédients liés + nutrition)"""
+    db.query(NutritionFact).delete()
+    db.query(PlatIngredient).delete()
+    db.query(Plat).delete()
+    db.commit()
+    return {"message": "Tous les plats supprimés"}
 
 @router.put("/admin/{plat_id}/valider")
 def valider_proposition(plat_id: int, validation: ValidationPlat, db: Session = Depends(get_db), _=Depends(require_role("gerant"))):

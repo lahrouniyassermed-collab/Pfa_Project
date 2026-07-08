@@ -17,7 +17,7 @@ from app.core.config import settings
 from app.models.models import (
     Table, Commande, LigneCommande, Plat, Paiement, Categorie,
     StatutCommandeEnum, OrigineCommandeEnum, ModePaiementEnum, StatutPaiementEnum,
-    ClientFidelite,
+    ClientFidelite, GainSpin, PrixRoue, TypePrixEnum, StatutGainEnum,
 )
 from app.api.routes.clients import _crediter_points
 import random, string, stripe
@@ -44,6 +44,7 @@ class CommandeQRCreate(BaseModel):
     table_id: int
     lignes: List[LigneQR]
     client_fidelite_id: Optional[int] = None
+    gain_id: Optional[int] = None  # ID du gain roue à appliquer comme réduction
 
 class ConfirmerPaiement(BaseModel):
     payment_intent_id: str
@@ -51,6 +52,25 @@ class ConfirmerPaiement(BaseModel):
 
 
 # ── Routes ───────────────────────────────────────────────────────────────
+
+@router_qr.get("/client-prizes/{client_id}")
+def get_client_prizes(client_id: int, db: Session = Depends(get_db)):
+    """Retourne les gains non-utilisés d'un client (pour appliquer une réduction)."""
+    gains = db.query(GainSpin).filter(
+        GainSpin.client_id == client_id,
+        GainSpin.statut == StatutGainEnum.non_utilise,
+    ).all()
+    result = []
+    for g in gains:
+        prix = db.query(PrixRoue).filter(PrixRoue.id == g.prix_id).first()
+        if prix and prix.type == TypePrixEnum.reduction:
+            result.append({
+                "gain_id": g.id,
+                "nom": prix.nom,
+                "valeur": prix.valeur,  # pourcentage ex: 20
+            })
+    return result
+
 
 @router_qr.get("/table/{table_id}")
 def info_table(table_id: int, db: Session = Depends(get_db)):
@@ -125,7 +145,25 @@ def creer_commande_qr(data: CommandeQRCreate, db: Session = Depends(get_db)):
         db.add(ligne)
         total += plat.prix * l.quantite
 
-    commande.montant_total = total
+    # Appliquer une réduction (prix roue) si fournie
+    reduction_info = None
+    if data.gain_id and data.client_fidelite_id:
+        gain = db.query(GainSpin).filter(
+            GainSpin.id == data.gain_id,
+            GainSpin.client_id == data.client_fidelite_id,
+            GainSpin.statut == StatutGainEnum.non_utilise,
+        ).first()
+        if gain:
+            prix = db.query(PrixRoue).filter(PrixRoue.id == gain.prix_id).first()
+            if prix and prix.type == TypePrixEnum.reduction and prix.valeur > 0:
+                pct = prix.valeur  # ex: 20 pour 20%
+                total_apres = round(total * (1 - pct / 100), 2)
+                reduction_info = {"nom": prix.nom, "pct": pct, "montant_remise": round(total - total_apres, 2)}
+                total = total_apres
+                gain.statut = StatutGainEnum.utilise
+
+    commande.montant_total = round(total, 2)
+    table.statut = "occupee"
     db.commit()
     db.refresh(commande)
 
@@ -133,6 +171,7 @@ def creer_commande_qr(data: CommandeQRCreate, db: Session = Depends(get_db)):
         "commande_id": commande.id,
         "code_unique": commande.code_unique,
         "montant_total": commande.montant_total,
+        "reduction": reduction_info,
     }
 
 
@@ -242,7 +281,8 @@ def payer_especes(commande_id: int, db: Session = Depends(get_db)):
         reference_transaction=f"ESPECES-{commande.code_unique}",
     )
     db.add(paiement)
-    commande.statut = StatutCommandeEnum.envoyee
+    # Reste en_cours — le serveur doit valider avant d'envoyer en cuisine
+    # commande.statut reste StatutCommandeEnum.en_cours
     if commande.table:
         commande.table.statut = "occupee"
 

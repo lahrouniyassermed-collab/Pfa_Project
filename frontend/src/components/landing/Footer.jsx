@@ -105,6 +105,11 @@ export default function Footer() {
             Espace personnel
           </a>
         </div>
+        <div className="text-center pt-6" style={{ borderTop:'1px solid rgba(255,255,255,0.02)' }}>
+          <p className="text-xs" style={{ color:'rgba(245,240,232,0.1)', fontFamily:"'Inter',sans-serif", letterSpacing:'0.04em' }}>
+            Développé par <span style={{ color:'rgba(245,240,232,0.2)' }}>Yasser Lahrouni</span>
+          </p>
+        </div>
       </div>
     </footer>
   )
