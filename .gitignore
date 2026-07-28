@@ -5,6 +5,7 @@ __pycache__/
 *.pyd
 .Python
 venv/
+.venv/
 env/
 .env
 *.egg-info/
@@ -23,6 +24,10 @@ backend/uploads/
 node_modules/
 frontend/dist/
 frontend/.vite/
+
+# Claude Code local
+.claude/settings.local.json
+.claude/worktrees/
 
 # IDE
 .vscode/
