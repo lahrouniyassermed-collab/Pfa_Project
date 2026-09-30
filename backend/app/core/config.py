@@ -11,8 +11,14 @@ class Settings(BaseSettings):
     SMTP_USER: str = ""
     SMTP_PASSWORD: str = ""
     RESTAURANT_NAME: str = "MangerManger"
+    GEMINI_API_KEY: str = ""
+    GROQ_API_KEY: str = ""
+    HF_TOKEN: str = ""
+    STRIPE_SECRET_KEY: str = ""
+    STRIPE_PUBLISHABLE_KEY: str = ""
 
     class Config:
         env_file = ".env"
+        extra = "ignore"
 
 settings = Settings()

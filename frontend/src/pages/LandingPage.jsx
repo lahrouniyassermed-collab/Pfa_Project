@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getLanding, getMenu, creerReservation, deposerAvis, postuler } from '../services/api'
+import { getLanding, getMenu, creerReservation, deposerAvis, postuler, getTombolaActive, participerTombola } from '../services/api'
 
 // ── Configs des thèmes ────────────────────────────────────────
 const THEMES = {
@@ -69,6 +69,12 @@ export default function LandingPage() {
   const [candidatureForm, setCandidatureForm] = useState({ nom: '', prenom: '', email: '', telephone: '', message: '' })
   const [candidatureSent, setCandidatureSent] = useState(null)
   const [activeOffre, setActiveOffre] = useState(null)
+  const [tombola, setTombola] = useState(null)
+  const [tombolaForm, setTombolaForm] = useState({ nom: '', prenom: '', email: '', code_commande: '' })
+  const [tombolaScreenshot, setTombolaScreenshot] = useState(null)
+  const [tombolaSent, setTombolaSent] = useState(false)
+  const [tombolaError, setTombolaError] = useState('')
+  const [tombolaLoading, setTombolaLoading] = useState(false)
 
   useEffect(() => {
     Promise.all([getLanding(), getMenu()])
@@ -78,6 +84,7 @@ export default function LandingPage() {
       })
       .catch(console.error)
       .finally(() => setLoading(false))
+    getTombolaActive().then(r => setTombola(r.data)).catch(() => setTombola(null))
   }, [])
 
   const theme = data ? (THEMES[data.info?.theme] ?? THEMES.elegant) : THEMES.elegant
@@ -94,6 +101,31 @@ export default function LandingPage() {
     e.preventDefault()
     await deposerAvis(avisForm)
     setAvisSent(true)
+  }
+
+  async function handleTombola(e) {
+    e.preventDefault()
+    if (!tombolaScreenshot) {
+      setTombolaError('Ajoutez une capture d\'écran de votre avis Google Maps.')
+      return
+    }
+    setTombolaError('')
+    setTombolaLoading(true)
+    try {
+      const fd = new FormData()
+      fd.append('nom', tombolaForm.nom)
+      fd.append('prenom', tombolaForm.prenom)
+      fd.append('email', tombolaForm.email)
+      fd.append('code_commande', tombolaForm.code_commande)
+      fd.append('tombola_id', tombola.id)
+      fd.append('screenshot', tombolaScreenshot)
+      await participerTombola(fd)
+      setTombolaSent(true)
+    } catch (err) {
+      setTombolaError("Erreur lors de l'envoi. Réessayez.")
+    } finally {
+      setTombolaLoading(false)
+    }
   }
 
   async function handleCandidature(e) {
@@ -285,6 +317,76 @@ export default function LandingPage() {
                   Envoyer la demande
                 </button>
               </form>
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* ── TOMBOLA ── */}
+      {info.section_tombola && (
+        <section id="tombola" className={`py-20 px-6 ${theme.sectionAltBg}`}>
+          <div className="max-w-lg mx-auto">
+            <SectionTitle title="Tombola" theme={theme} couleur={couleur} />
+            {!tombola ? (
+              <p className={`text-sm text-center ${theme.subtext}`}>Aucune tombola en cours pour le moment.</p>
+            ) : tombolaSent ? (
+              <div className="text-center py-10">
+                <p className="text-4xl mb-3">✓</p>
+                <p className={`text-lg font-semibold ${theme.heading}`}>Participation envoyée !</p>
+                <p className={`text-sm mt-2 ${theme.subtext}`}>Elle sera validée puis intégrée au tirage au sort.</p>
+              </div>
+            ) : (
+              <>
+                <div className={`rounded-2xl p-5 mb-6 text-center ${theme.cardBg}`}>
+                  <p className={`font-bold text-lg ${theme.heading}`}>{tombola.titre}</p>
+                  <p className={`text-sm mt-1 ${theme.subtext}`}>🎁 À gagner : {tombola.lot}</p>
+                </div>
+                <form onSubmit={handleTombola} className={`rounded-2xl p-6 space-y-4 ${theme.cardBg}`}>
+                  <p className={`text-xs ${theme.subtext}`}>
+                    Laissez un avis Google Maps au restaurant, faites-en une capture d'écran, et déposez-la
+                    ci-dessous pour participer au tirage au sort.
+                  </p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className={`block text-xs mb-1 ${theme.subtext}`}>Prénom</label>
+                      <input required value={tombolaForm.prenom}
+                        onChange={e => setTombolaForm(f => ({ ...f, prenom: e.target.value }))}
+                        className={`w-full px-3 py-2 text-sm focus:outline-none ${theme.input}`} />
+                    </div>
+                    <div>
+                      <label className={`block text-xs mb-1 ${theme.subtext}`}>Nom</label>
+                      <input required value={tombolaForm.nom}
+                        onChange={e => setTombolaForm(f => ({ ...f, nom: e.target.value }))}
+                        className={`w-full px-3 py-2 text-sm focus:outline-none ${theme.input}`} />
+                    </div>
+                    <div className="col-span-2">
+                      <label className={`block text-xs mb-1 ${theme.subtext}`}>Email</label>
+                      <input required type="email" value={tombolaForm.email}
+                        onChange={e => setTombolaForm(f => ({ ...f, email: e.target.value }))}
+                        className={`w-full px-3 py-2 text-sm focus:outline-none ${theme.input}`} />
+                    </div>
+                    <div className="col-span-2">
+                      <label className={`block text-xs mb-1 ${theme.subtext}`}>Code de commande</label>
+                      <input required value={tombolaForm.code_commande}
+                        onChange={e => setTombolaForm(f => ({ ...f, code_commande: e.target.value }))}
+                        placeholder="CMD-2026..."
+                        className={`w-full px-3 py-2 text-sm focus:outline-none ${theme.input}`} />
+                    </div>
+                    <div className="col-span-2">
+                      <label className={`block text-xs mb-1 ${theme.subtext}`}>Capture d'écran de l'avis</label>
+                      <input required type="file" accept="image/*"
+                        onChange={e => setTombolaScreenshot(e.target.files?.[0] ?? null)}
+                        className={`w-full text-sm ${theme.subtext}`} />
+                    </div>
+                  </div>
+                  {tombolaError && <p className="text-red-500 text-xs">{tombolaError}</p>}
+                  <button type="submit" disabled={tombolaLoading}
+                    className={`w-full py-3 rounded-xl font-medium text-sm transition-all disabled:opacity-50 ${theme.btnPrimary}`}
+                    style={{ backgroundColor: couleur }}>
+                    {tombolaLoading ? 'Envoi…' : 'Participer'}
+                  </button>
+                </form>
+              </>
             )}
           </div>
         </section>

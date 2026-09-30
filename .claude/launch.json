@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "fes-atlas-car-dev",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "cd /d C:\\locationVoitureFes && npm run dev"],
+      "port": 3000
+    },
+    {
+      "name": "mangermanger-backend",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "cd /d C:\\mangermanger\\backend && venv14\\Scripts\\uvicorn.exe main:app --reload --port 8000"],
+      "port": 8000
+    },
+    {
+      "name": "mangermanger-frontend",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "cd /d C:\\mangermanger\\frontend && npm run dev"],
+      "port": 5173
+    }
+  ]
+}

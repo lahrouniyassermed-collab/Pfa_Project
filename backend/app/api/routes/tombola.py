@@ -18,6 +18,21 @@ class TombolaCreate(BaseModel):
     date_debut: str
     date_fin: str
 
+# ── Public : voir la tombola active ──────────────────────
+@router.get("/active")
+def tombola_active(db: Session = Depends(get_db)):
+    """Retourne la tombola active la plus récente (accès public, pas d'auth)"""
+    tombola = db.query(Tombola).filter(Tombola.active == True).order_by(Tombola.date_debut.desc()).first()
+    if not tombola:
+        return None
+    return {
+        "id": tombola.id,
+        "titre": tombola.titre,
+        "lot": tombola.lot,
+        "date_debut": tombola.date_debut.isoformat() if tombola.date_debut else None,
+        "date_fin": tombola.date_fin.isoformat() if tombola.date_fin else None,
+    }
+
 # ── Public : participer à la tombola ─────────────────────
 @router.post("/participer")
 async def participer(

@@ -498,6 +498,6 @@ export default function GerantSettings() {
           </form>
         </div>
       )}
-    </GerantLayout>
+    </div>
   )
 }

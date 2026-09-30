@@ -89,6 +89,8 @@ export const getParticipations  = (tid)     => api.get(`/api/tombola/participati
 export const validerAvis        = (id)      => api.put(`/api/tombola/avis/${id}/valider`)
 export const rejeterAvis        = (id)      => api.put(`/api/tombola/avis/${id}/rejeter`)
 export const tirageAuSort       = (id)      => api.post(`/api/tombola/${id}/tirage`)
+export const getTombolaActive   = ()        => api.get('/api/tombola/active')
+export const participerTombola  = (formData)=> api.post('/api/tombola/participer', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
 
 // ── DASHBOARD ─────────────────────────────────────────────
 export const getDashboard       = ()        => api.get('/api/dashboard/')
